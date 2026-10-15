@@ -5,7 +5,7 @@ import type {
 import { ErrorNegocio, noEncontrado } from '../errores';
 import { codigoReserva, generadores, insertar, siguienteId, valorUnico } from '../dominio/ids';
 import { CLASES, ESTADO_RESERVA, esClase, liquidar, tarifa, type Clase } from '../dominio/reglas';
-import { aFecha, aFechaHora, deTexto, sumarDias, sumarMinutos } from '../dominio/fechas';
+import { aFechaHora, deTexto, sumarMinutos } from '../dominio/fechas';
 import { aVueloResumen, filaVuelo, nombreCompleto, tiquetesVendidos, vuelos, type FilaVuelo } from './consultas';
 import type { FacturacionService } from './FacturacionService';
 
@@ -74,11 +74,10 @@ export class ReservasService {
     const resultados = this.vuelosVendibles(b.origen, b.destino, b.fecha, b.fecha).map((f) => this.aResultado(f, clase));
     let fechasCercanas: ResultadoBusqueda['fechasCercanas'] = [];
     if (!resultados.some((v) => v.sillasDisponibles >= pasajeros)) {
+      // Toda la programación a la venta de la ruta; se sugieren las 4 fechas con sillas más cercanas a la buscada.
       const base = deTexto(b.fecha);
-      const desde = aFecha(sumarDias(base, -10));
-      const hasta = aFecha(sumarDias(base, 10));
       const porFecha = new Map<string, { vuelos: number; desde: number }>();
-      for (const f of this.vuelosVendibles(b.origen, b.destino, desde, hasta)) {
+      for (const f of this.vuelosVendibles(b.origen, b.destino, '0000-01-01', '9999-12-31')) {
         const r = this.aResultado(f, clase);
         const fecha = f.SalidaProgramada.slice(0, 10);
         if (fecha === b.fecha || r.sillasDisponibles < pasajeros) continue;

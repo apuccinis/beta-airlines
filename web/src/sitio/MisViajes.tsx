@@ -4,7 +4,7 @@ import type { ReservaDetalle } from '@beta/core';
 import { useCarga } from '../datos';
 import { Aviso, Cargando, Chip, Codigo, Encabezado, Pestanas, Vacio } from '../ui/comunes';
 import { Icono } from '../ui/Icono';
-import { cuando, dinero, duracion, fechaHora, fechaLarga, hora } from '../ui/formato';
+import { cuando, dinero, duracion, fechaHora, fechaLarga, hora, horaLlegada } from '../ui/formato';
 
 function Viaje({ r }: { r: ReservaDetalle }) {
   const pendientesCheckin = r.estado === 'Confirmada' && r.tiquetes.some((t) => t.estado === 'Emitido' && !t.checkin);
@@ -14,7 +14,7 @@ function Viaje({ r }: { r: ReservaDetalle }) {
       <div className="viaje-fecha">
         <strong>{cuando(r.vuelo.salida)}</strong>
         <span className="texto-2">
-          {hora(r.vuelo.salida)} a {hora(r.vuelo.llegada)}
+          {hora(r.vuelo.salida)} a {horaLlegada(r.vuelo.salida, r.vuelo.llegada)}
         </span>
       </div>
       <div className="viaje-ruta">
@@ -134,7 +134,7 @@ export function DetalleReserva() {
           </div>
           <div style={{ textAlign: 'right' }}>
             <strong>
-              {hora(r.vuelo.salida)} a {hora(r.vuelo.llegada)}
+              {hora(r.vuelo.salida)} a {horaLlegada(r.vuelo.salida, r.vuelo.llegada)}
             </strong>
             <p className="chico texto-2">
               Vuelo <Codigo>{r.vuelo.numero}</Codigo>, {duracion(r.vuelo.duracionMin)}, {r.vuelo.aeronave.modelo}

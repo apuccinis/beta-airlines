@@ -15,23 +15,46 @@ export const CIUDADES = [
   { iata: 'MAD', ciudad: 'Madrid', region: 'Comunidad de Madrid', pais: 'España', aeropuerto: 'Aeropuerto Adolfo Suárez Madrid-Barajas' },
 ] as const;
 
-/** 14 pares de rutas (se crean en ambos sentidos) y salidas diarias por sentido en la programación vigente. */
-export const PARES: { o: string; d: string; millas: number; frecuencias: number }[] = [
-  { o: 'ATL', d: 'JFK', millas: 760, frecuencias: 2 },
-  { o: 'ATL', d: 'LAX', millas: 1946, frecuencias: 1 },
-  { o: 'ATL', d: 'ORD', millas: 606, frecuencias: 2 },
-  { o: 'ATL', d: 'MIA', millas: 594, frecuencias: 2 },
-  { o: 'ATL', d: 'SEA', millas: 2182, frecuencias: 1 },
-  { o: 'ATL', d: 'BOS', millas: 946, frecuencias: 1 },
-  { o: 'ATL', d: 'DFW', millas: 731, frecuencias: 1 },
-  { o: 'JFK', d: 'LAX', millas: 2475, frecuencias: 1 },
-  { o: 'ORD', d: 'SEA', millas: 1721, frecuencias: 1 },
-  { o: 'JFK', d: 'MIA', millas: 1089, frecuencias: 1 },
-  { o: 'ATL', d: 'BOG', millas: 2130, frecuencias: 1 },
-  { o: 'ATL', d: 'MEX', millas: 1332, frecuencias: 1 },
-  { o: 'JFK', d: 'LHR', millas: 3451, frecuencias: 1 },
-  { o: 'ATL', d: 'MAD', millas: 4381, frecuencias: 1 },
+/**
+ * Pares de rutas (se crean en ambos sentidos): todas las combinaciones de las 12 ciudades.
+ * `frecuencias` = salidas diarias por sentido en la programación vigente;
+ * `mensual` = vuelos por mes y sentido en la historia del año.
+ * Los 14 primeros son las rutas troncales; el resto, rutas con menos tráfico.
+ */
+export const PARES: { o: string; d: string; millas: number; frecuencias: number; mensual: number }[] = [
+  { o: 'ATL', d: 'JFK', millas: 760, frecuencias: 2, mensual: 3 },
+  { o: 'ATL', d: 'LAX', millas: 1946, frecuencias: 1, mensual: 3 },
+  { o: 'ATL', d: 'ORD', millas: 606, frecuencias: 2, mensual: 3 },
+  { o: 'ATL', d: 'MIA', millas: 594, frecuencias: 2, mensual: 3 },
+  { o: 'ATL', d: 'SEA', millas: 2182, frecuencias: 1, mensual: 3 },
+  { o: 'ATL', d: 'BOS', millas: 946, frecuencias: 1, mensual: 3 },
+  { o: 'ATL', d: 'DFW', millas: 731, frecuencias: 1, mensual: 3 },
+  { o: 'JFK', d: 'LAX', millas: 2475, frecuencias: 1, mensual: 3 },
+  { o: 'ORD', d: 'SEA', millas: 1721, frecuencias: 1, mensual: 3 },
+  { o: 'JFK', d: 'MIA', millas: 1089, frecuencias: 1, mensual: 3 },
+  { o: 'ATL', d: 'BOG', millas: 2130, frecuencias: 1, mensual: 3 },
+  { o: 'ATL', d: 'MEX', millas: 1332, frecuencias: 1, mensual: 3 },
+  { o: 'JFK', d: 'LHR', millas: 3451, frecuencias: 1, mensual: 3 },
+  { o: 'ATL', d: 'MAD', millas: 4381, frecuencias: 1, mensual: 3 },
+  ...(
+    [
+      ['ATL', 'LHR', 4201], ['JFK', 'ORD', 738], ['JFK', 'SEA', 2415], ['JFK', 'BOS', 186], ['JFK', 'DFW', 1389],
+      ['JFK', 'BOG', 2483], ['JFK', 'MEX', 2091], ['JFK', 'MAD', 3579], ['LAX', 'ORD', 1741], ['LAX', 'MIA', 2338],
+      ['LAX', 'SEA', 955], ['LAX', 'BOS', 2605], ['LAX', 'DFW', 1232], ['LAX', 'BOG', 3480], ['LAX', 'MEX', 1553],
+      ['LAX', 'LHR', 5443], ['LAX', 'MAD', 5832], ['ORD', 'MIA', 1199], ['ORD', 'BOS', 864], ['ORD', 'DFW', 802],
+      ['ORD', 'BOG', 2711], ['ORD', 'MEX', 1689], ['ORD', 'LHR', 3942], ['ORD', 'MAD', 4191], ['MIA', 'SEA', 2721],
+      ['MIA', 'BOS', 1260], ['MIA', 'DFW', 1120], ['MIA', 'BOG', 1513], ['MIA', 'MEX', 1275], ['MIA', 'LHR', 4417],
+      ['MIA', 'MAD', 4415], ['SEA', 'BOS', 2489], ['SEA', 'DFW', 1658], ['SEA', 'BOG', 4100], ['SEA', 'MEX', 2335],
+      ['SEA', 'LHR', 4786], ['SEA', 'MAD', 5295], ['BOS', 'DFW', 1559], ['BOS', 'BOG', 2610], ['BOS', 'MEX', 2277],
+      ['BOS', 'LHR', 3256], ['BOS', 'MAD', 3401], ['DFW', 'BOG', 2444], ['DFW', 'MEX', 939], ['DFW', 'LHR', 4740],
+      ['DFW', 'MAD', 4954], ['BOG', 'MEX', 1963], ['BOG', 'LHR', 5265], ['BOG', 'MAD', 4991], ['MEX', 'LHR', 5533],
+      ['MEX', 'MAD', 5633], ['LHR', 'MAD', 772],
+    ] as const
+  ).map(([o, d, millas]) => ({ o, d, millas, frecuencias: 1, mensual: 1 })),
 ];
+
+/** Días de programación a la venta, contando hoy. */
+export const DIAS_PROGRAMACION = 90;
 
 export const AERONAVES = [
   { matricula: 'N801BA', modelo: 'Boeing 737-800', capacidad: 160 },

@@ -20,7 +20,7 @@ describe.each(ADAPTADORES)('flujo reserva → pago → check-in → 8 etapas →
     const { filas } = e.resultado.seed;
     expect(filas.Cliente).toBe(60);
     expect(filas.Aeronave).toBe(8);
-    expect(filas.Ruta).toBe(28);
+    expect(filas.Ruta).toBe(132);
     expect(filas.Departamento).toBe(10);
     expect(filas.CasoServicio).toBe(16);
     expect(filas.Empleado).toBeGreaterThanOrEqual(28);

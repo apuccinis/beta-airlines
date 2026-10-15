@@ -17,7 +17,7 @@ describe.each(ADAPTADORES)('ETL y reportes 4a, 4b y 4c con $nombre', (adaptador)
     const filas = Object.fromEntries(estado.conteos.map((c) => [c.tabla, c.filas]));
     const n = (sql: string) => e.db.get<{ n: number }>(sql)!.n;
     expect(filas.DimCiudad).toBe(12);
-    expect(filas.DimRuta).toBe(28);
+    expect(filas.DimRuta).toBe(132);
     expect(filas.DimCliente).toBe(n('SELECT COUNT(*) AS n FROM Cliente'));
     expect(filas.DimCanal).toBe(n('SELECT COUNT(DISTINCT Canal) AS n FROM Reserva'));
     expect(filas.FactVentaTiquetes).toBe(n(`SELECT COUNT(*) AS n FROM Tiquete WHERE Estado <> 'Anulado'`));

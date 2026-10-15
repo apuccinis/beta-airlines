@@ -13,7 +13,7 @@ import { MantenimientoService } from '../servicios/MantenimientoService';
 import { OperacionesService } from '../servicios/OperacionesService';
 import {
   AERONAVES, APELLIDOS, CANALES_CHECKIN_PESO, CANALES_RESERVA_PESO, CASOS, CIUDADES, CLASES_PESO, CUENTAS, DEPARTAMENTOS,
-  DOMINIOS_CORREO, MANTENIMIENTOS, NOMBRES, PARES, PLANTA, RESIDENCIAS, TIPOS_EQUIPO,
+  DIAS_PROGRAMACION, DOMINIOS_CORREO, MANTENIMIENTOS, NOMBRES, PARES, PLANTA, RESIDENCIAS, TIPOS_EQUIPO,
 } from './catalogos';
 
 export interface ResumenSeed {
@@ -37,6 +37,7 @@ interface RutaSeed {
   pi: number;
   dir: 0 | 1;
   frecuencias: number;
+  mensual: number;
 }
 
 interface VueloSeed {
@@ -65,7 +66,7 @@ const sinTildes = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLo
 
 /**
  * Llena una base operacional vacía con datos realistas y deterministas (semilla fija).
- * Historia desde el 1 de enero del año en curso hasta ayer y programación de los próximos 10 días.
+ * Historia desde el 1 de enero del año en curso hasta ayer y programación de los próximos DIAS_PROGRAMACION días.
  * Los vuelos de los últimos 10 días (y los de hoy que ya salieron) pasan por el pipeline operacional
  * real (OperacionesService), con el reloj fijado en el momento de cada etapa.
  */
@@ -223,7 +224,7 @@ export function sembrar(db: Db, opciones: OpcionesSeed = {}): ResumenSeed {
       ([[p.o, p.d, 0], [p.d, p.o, 1]] as const).forEach(([o, d, dir]) => {
         const id = siguienteId(db, 'Ruta');
         I('Ruta', { IdRuta: id, IdAeropuertoOrigen: aero[o].id, IdAeropuertoDestino: aero[d].id, DistanciaMillas: p.millas, TipoRuta: tipo });
-        rutas.push({ id, o, d, millas: p.millas, tipo, pi, dir, frecuencias: p.frecuencias });
+        rutas.push({ id, o, d, millas: p.millas, tipo, pi, dir, frecuencias: p.frecuencias, mensual: p.mensual });
       });
     });
 
@@ -231,9 +232,13 @@ export function sembrar(db: Db, opciones: OpcionesSeed = {}): ResumenSeed {
     const naves = (n: number[]) => n.map((x) => formatoId('Aeronave', x));
     const naveDe = (r: RutaSeed) =>
       r.millas > 3000 ? pick(naves([7, 8])) : r.millas > 1800 ? pick(naves([3, 4, 5])) : r.millas < 700 ? pick(naves([6, 1, 2])) : pick(naves([1, 2, 3, 4]));
+    // Salidas repartidas en el día: transatlánticas hacia Europa en la tarde y de regreso en la mañana;
+    // con dos frecuencias, una en la mañana y otra en la tarde; con una, entre las 6:00 y las 21:00.
     const horaSalida = (r: RutaSeed, f: number): [number, number] => {
-      if (r.millas > 3000) return r.dir === 0 ? [18 + (r.pi % 2) * 2, 30] : [10 + (r.pi % 2), 15];
-      return [[6, 12, 17][f] + ((r.pi + r.dir * 2) % 4), ((r.pi * 7 + r.dir * 3 + f) % 4) * 15];
+      const minutos = ((r.pi * 7 + r.dir * 3 + f) % 4) * 15;
+      if (r.millas > 3000) return [r.dir === 0 ? 16 + ((r.pi * 3) % 6) : 8 + (r.pi % 5), minutos];
+      if (r.frecuencias > 1) return [[6, 13][f] + ((r.pi + r.dir * 2) % 5), minutos];
+      return [6 + ((r.pi * 7 + r.dir * 5) % 16), minutos];
     };
     const tiemposEtapas = (salida: Date, llegada: Date): Date[] => {
       const x = azar();
@@ -460,13 +465,13 @@ export function sembrar(db: Db, opciones: OpcionesSeed = {}): ResumenSeed {
       reloj.fijar(ahora);
     };
 
-    // Historia: ~3 vuelos al mes por ruta y sentido, desde el 1 de enero hasta ayer
+    // Historia: `mensual` vuelos al mes por ruta y sentido (3 en las troncales), desde el 1 de enero hasta ayer
     const recientes = sumarDias(hoy, -10);
     const lauraMes = new Set<string>();
     const rutasLaura = [0, 3, 10]; // ATL–JFK, ATL–MIA, ATL–BOG
     for (let d = new Date(inicio); d < hoy; d = sumarDias(d, 1)) {
       for (const r of rutas) {
-        if ((d.getDate() + r.pi * 3 + r.dir) % 10 !== 0) continue;
+        if ((d.getDate() + r.pi * 3 + r.dir) % Math.round(30 / r.mensual) !== 0) continue;
         const historico = d < recientes;
         const v = crearVuelo(r, d.getDate() % r.frecuencias, d, historico);
         let forzado: Parameters<typeof reservar>[3];
@@ -481,8 +486,15 @@ export function sembrar(db: Db, opciones: OpcionesSeed = {}): ResumenSeed {
       }
     }
 
-    // Programación de los próximos 10 días (incluye hoy). Rutas de más de 3.000 millas: día por medio.
-    for (let k = 0; k < 10; k++) {
+    // Programación de los próximos DIAS_PROGRAMACION días (incluye hoy). Rutas de más de 3.000 millas: día por medio.
+    // Las reservas se concentran en los vuelos cercanos: las troncales se llenan más que el resto,
+    // y los vuelos a más de 4 semanas todavía no tienen reservas.
+    const reservasPrevias = (r: RutaSeed, k: number) => {
+      if (k >= 28) return 0;
+      if (r.mensual >= 3) return k < 3 ? ri(0, 2) : k < 10 ? ri(0, 1) : azar() < 0.15 ? 1 : 0;
+      return azar() < (k < 3 ? 0.3 : 0.06) ? 1 : 0;
+    };
+    for (let k = 0; k < DIAS_PROGRAMACION; k++) {
       const dia = sumarDias(hoy, k);
       for (const r of rutas) {
         if (r.millas > 3000 && k % 2 === 1) continue;
@@ -492,7 +504,7 @@ export function sembrar(db: Db, opciones: OpcionesSeed = {}): ResumenSeed {
             k === 1 && r.o === 'ATL' && r.d === 'JFK' && f === r.frecuencias - 1
               ? { cliente: laura, pax: 1, canal: 'App', clase: 'Económica' as Clase }
               : undefined;
-          const tiquetes = reservar(v, Math.max(forzado ? 1 : 0, k < 3 ? ri(0, 2) : ri(0, 1)), 'activo', forzado);
+          const tiquetes = reservar(v, Math.max(forzado ? 1 : 0, reservasPrevias(r, k)), 'activo', forzado);
           if (k === 0) operar(v, tiquetes, false);
         }
       }

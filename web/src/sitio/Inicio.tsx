@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CLASES, type Aeropuerto } from '@beta/core';
+import { CLASES, DIAS_PROGRAMACION, type Aeropuerto } from '@beta/core';
 import { useCarga, useDatos } from '../datos';
 import { Aviso, Boton, Chip, Codigo, Selector } from '../ui/comunes';
 import { Icono, RUTA_AVION } from '../ui/Icono';
@@ -120,6 +120,7 @@ export function Inicio() {
 
   const porCodigo = useMemo(() => new Map((aeropuertos.datos ?? []).map((a) => [a.codigo, a])), [aeropuertos.datos]);
   const hoy = fechaISO(new Date());
+  const ultimoDia = fechaISO(sumarDias(new Date(), DIAS_PROGRAMACION - 1));
 
   const buscar = (e: FormEvent) => {
     e.preventDefault();
@@ -183,7 +184,7 @@ export function Inicio() {
           </Selector>
           <div className="campo campo-fecha">
             <label htmlFor="campo-fecha">Fecha de ida</label>
-            <input id="campo-fecha" name="fecha" type="date" min={hoy} required value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <input id="campo-fecha" name="fecha" type="date" min={hoy} max={ultimoDia} required value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
           <Selector etiqueta="Pasajeros" name="pasajeros" className="campo-pax" value={pasajeros} onChange={(e) => setPasajeros(e.target.value)}>
             {[1, 2, 3, 4].map((n) => (

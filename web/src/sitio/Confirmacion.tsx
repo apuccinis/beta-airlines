@@ -2,7 +2,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { useCarga } from '../datos';
 import { Aviso, Cargando, Chip, Codigo, Encabezado } from '../ui/comunes';
 import { Icono } from '../ui/Icono';
-import { dinero, duracion, fechaHora, fechaLarga, hora } from '../ui/formato';
+import { dinero, duracion, fechaHora, fechaLarga, hora, horaLlegada } from '../ui/formato';
 import { Pasos } from './compra';
 
 export function Confirmacion() {
@@ -47,7 +47,7 @@ export function Confirmacion() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <strong>
-                {hora(r.vuelo.salida)} a {hora(r.vuelo.llegada)}
+                {hora(r.vuelo.salida)} a {horaLlegada(r.vuelo.salida, r.vuelo.llegada)}
               </strong>
               <p className="texto-2 chico">
                 Vuelo <Codigo>{r.vuelo.numero}</Codigo>, {duracion(r.vuelo.duracionMin)}

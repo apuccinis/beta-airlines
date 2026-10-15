@@ -4,7 +4,7 @@ import { CLASES, type Clase, type ResultadoVuelo } from '@beta/core';
 import { useCarga } from '../datos';
 import { Aviso, Boton, Cargando, Codigo, Pestanas, Vacio } from '../ui/comunes';
 import { Icono } from '../ui/Icono';
-import { dinero, duracion, fechaLarga, fechaCorta, hora, plural } from '../ui/formato';
+import { diasDeLlegada, dinero, duracion, fechaLarga, fechaCorta, hora, plural } from '../ui/formato';
 
 function FilaVuelo({ v, pasajeros, onElegir }: { v: ResultadoVuelo; pasajeros: number; onElegir: () => void }) {
   const agotado = v.sillasDisponibles < pasajeros;
@@ -22,7 +22,14 @@ function FilaVuelo({ v, pasajeros, onElegir }: { v: ResultadoVuelo; pasajeros: n
             <span>Directo</span>
           </div>
           <div className="tramo-destino">
-            <div className="tramo-hora">{hora(v.llegada)}</div>
+            <div className="tramo-hora">
+              {hora(v.llegada)}
+              {diasDeLlegada(v.salida, v.llegada) > 0 && (
+                <sup className="dia-mas" title="Llega al día siguiente">
+                  +{diasDeLlegada(v.salida, v.llegada)}
+                </sup>
+              )}
+            </div>
             <div className="tramo-iata">{v.destino.codigo}</div>
           </div>
         </div>

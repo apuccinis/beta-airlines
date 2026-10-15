@@ -974,6 +974,14 @@ textarea {
   font-stretch: 110%;
   line-height: 1;
 }
+.dia-mas {
+  margin-left: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  font-stretch: 100%;
+  color: var(--tinta-2);
+  vertical-align: super;
+}
 .tramo-iata {
   font-family: var(--mono);
   color: var(--tinta-2);

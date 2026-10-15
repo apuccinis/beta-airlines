@@ -15,6 +15,14 @@ export const aDate = (s: string) => {
 };
 
 export const hora = (s: string | null | undefined) => (s ? s.slice(11, 16) : '—');
+/** Días calendario entre la salida y la llegada (0 si llega el mismo día). */
+export const diasDeLlegada = (salida: string, llegada: string) =>
+  Math.round((Date.parse(llegada.slice(0, 10)) - Date.parse(salida.slice(0, 10))) / 86_400_000);
+/** Hora de llegada con "(+1)" si llega al día siguiente. */
+export const horaLlegada = (salida: string, llegada: string) => {
+  const dias = diasDeLlegada(salida, llegada);
+  return dias > 0 ? `${hora(llegada)} (+${dias})` : hora(llegada);
+};
 export const capitalizar = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export const fechaCorta = (s: string) =>
   capitalizar(aDate(s).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, ''));

@@ -1,7 +1,7 @@
 import type { VueloResumen } from '@beta/core';
 import { Codigo } from '../ui/comunes';
 import { Icono } from '../ui/Icono';
-import { dinero, duracion, fechaLarga, hora } from '../ui/formato';
+import { dinero, duracion, fechaLarga, hora, horaLlegada } from '../ui/formato';
 
 const PASOS = ['Vuelo', 'Pasajeros', 'Pago', 'Confirmación'];
 
@@ -40,7 +40,7 @@ export function ResumenCompra({
           </div>
           <span>{fechaLarga(vuelo.salida)}</span>
           <span className="texto-2 chico">
-            {hora(vuelo.salida)} a {hora(vuelo.llegada)}, {duracion(vuelo.duracionMin)}. Vuelo <Codigo>{vuelo.numero}</Codigo>, {vuelo.aeronave.modelo}
+            {hora(vuelo.salida)} a {horaLlegada(vuelo.salida, vuelo.llegada)}, {duracion(vuelo.duracionMin)}. Vuelo <Codigo>{vuelo.numero}</Codigo>, {vuelo.aeronave.modelo}
           </span>
         </div>
         <dl className="desglose">
