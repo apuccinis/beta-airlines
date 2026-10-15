@@ -1,0 +1,999 @@
+<!-- Version anterior en un solo archivo. Solo referencia de logica (reglas, etapas, ETL, seed). No copiar interfaz ni textos. Los marcadores DDLBD/DDLDW/SQLJS/WASM eran rellenados por un script de build. -->
+<title>Beta Airlines Prototipo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: barra superior con las cuatro áreas del sistema; cada área es una columna de trabajo de ancho máximo 1180px. El tablero de vuelos es el único elemento "oscuro" en ambos temas. */
+:root{
+  --bg:#EEF2F5; --surface:#FFFFFF; --sunk:#F6F8FA; --ink:#13202B; --muted:#5A6977; --line:#D3DCE4;
+  --brand:#0E5A8A; --brand-ink:#FFFFFF; --brand-soft:#DCEAF4;
+  --board:#0C141C; --board-line:#1E2B37; --amber:#F0B429; --board-dim:#8FA0AF;
+  --ok:#17784A; --ok-bg:#DFF2E8; --warn:#8C5A00; --warn-bg:#FBEFD3; --bad:#B42318; --bad-bg:#FBE5E3;
+  --sql:#5B3FA0;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0B1218; --surface:#131D26; --sunk:#0F1820; --ink:#E3EAF0; --muted:#93A3B1; --line:#253441;
+  --brand:#5BAEE3; --brand-ink:#04121C; --brand-soft:#16324A;
+  --board:#070C11; --board-line:#1A2632;
+  --ok:#6BD39E; --ok-bg:#12382A; --warn:#F1BE63; --warn-bg:#3A2B10; --bad:#FF928A; --bad-bg:#43201D; --sql:#B9A3F5;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B1218; --surface:#131D26; --sunk:#0F1820; --ink:#E3EAF0; --muted:#93A3B1; --line:#253441;
+  --brand:#5BAEE3; --brand-ink:#04121C; --brand-soft:#16324A;
+  --board:#070C11; --board-line:#1A2632;
+  --ok:#6BD39E; --ok-bg:#12382A; --warn:#F1BE63; --warn-bg:#3A2B10; --bad:#FF928A; --bad-bg:#43201D; --sql:#B9A3F5;
+  color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--display);font-stretch:88%;line-height:1.12;margin:0;text-wrap:balance}
+h2{font-size:clamp(22px,3vw,28px);font-weight:750}
+h3{font-size:18px;font-weight:700}
+h4{font-size:15px;font-weight:700}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.mono{font-family:var(--mono);font-size:.92em}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.wrapx{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.inner{max-width:1180px;margin:0 auto}
+
+/* barra superior */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .inner{display:flex;align-items:center;gap:14px;padding-block:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:9px;background:none;border:0;padding:0;cursor:pointer}
+.brand svg{width:30px;height:30px;color:var(--brand)}
+.brand b{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:21px;letter-spacing:.01em}
+.brand span{font-size:12px;color:var(--muted);display:block;line-height:1}
+.nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.nav::-webkit-scrollbar{display:none}
+.nav button{border:0;background:none;padding:8px 12px;border-radius:8px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.nav button:hover{color:var(--ink)}
+.nav button[aria-current="page"]{background:var(--brand-soft);color:var(--brand)}
+.logbtn{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--sunk);border-radius:999px;padding:6px 12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.logbtn .dot{width:8px;height:8px;border-radius:50%;background:var(--sql)}
+.logbtn .count{font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+main.inner{padding-block:26px 120px;display:grid;gap:22px}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.head p{color:var(--muted);margin-top:6px;max-width:68ch}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:9px 14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer}
+.tabs button[aria-current="true"]{color:var(--ink);border-bottom-color:var(--brand)}
+.tabs .badge{display:inline-block;margin-left:6px;min-width:20px;padding:0 6px;border-radius:999px;background:var(--amber);color:#2B1D00;font-size:12px;text-align:center}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.panel.flat{border:0;background:none;padding:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:18px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px}
+.stack{display:grid;gap:12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1.5px solid var(--brand);background:var(--brand);color:var(--brand-ink);border-radius:9px;padding:8px 15px;font-weight:650;cursor:pointer;line-height:1.2;white-space:nowrap}
+.btn:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent;color:var(--brand)}
+.btn.quiet{background:transparent;border-color:var(--line);color:var(--ink)}
+.btn.danger{background:transparent;border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:5px 10px;font-size:13.5px;border-radius:7px}
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:none}
+.link{background:none;border:0;padding:0;color:var(--brand);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+
+label{display:block;font-size:13px;font-weight:650;margin-bottom:4px;color:var(--muted)}
+input,select,textarea{width:100%;background:var(--sunk);border:1.5px solid var(--line);border-radius:9px;padding:9px 11px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
+textarea{min-height:90px;resize:vertical}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px}
+.fields .full{grid-column:1/-1}
+.hint{font-size:12.5px;color:var(--muted);margin-top:4px}
+.alert{border-radius:9px;padding:10px 13px;font-size:14px}
+.alert.ok{background:var(--ok-bg);color:var(--ok)} .alert.bad{background:var(--bad-bg);color:var(--bad)} .alert.info{background:var(--brand-soft);color:var(--ink)}
+
+.pill{display:inline-block;font-size:12px;font-weight:650;padding:2px 9px;border-radius:999px;background:var(--brand-soft);color:var(--brand);white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.gray{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.sim{display:inline-block;font-size:11.5px;font-weight:650;padding:1px 7px;border:1.5px dashed currentColor;border-radius:6px;color:var(--warn);white-space:nowrap}
+
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:12px;font-weight:700;color:var(--muted);background:var(--sunk);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+td.null{color:var(--muted);font-style:italic}
+tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--sunk)}
+tbody tr.sel td{background:var(--brand-soft)}
+th small{display:block;color:var(--sql);font-size:10.5px;font-weight:700}
+
+/* tablero de vuelos (FIDS) */
+.board{background:var(--board);border-radius:12px;padding:0 0 6px;overflow:auto;max-height:430px;color:#E6EDF3}
+.board thead th{position:sticky;top:0;background:var(--board);z-index:1}
+.board table{font-family:var(--mono);font-size:14px;min-width:720px}
+.board th{background:transparent;color:var(--board-dim);border-bottom:1px solid var(--board-line);font-family:var(--mono);font-weight:500;letter-spacing:.06em}
+.board td{border-bottom:1px solid var(--board-line);color:#E6EDF3}
+.board td.fl{color:var(--amber);font-weight:600;letter-spacing:.04em}
+.board tr.click:hover td{background:#13202B}
+.board tr.sel td{background:#1A2A38}
+.board .st{font-weight:600;letter-spacing:.03em}
+.st-prog{color:#C9D4DE}.st-act{color:var(--amber)}.st-air{color:#7CC4F2}.st-done{color:#6BD39E}
+
+/* pipeline */
+.pipe{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;list-style:none;margin:0;padding:0}
+.pipe li{border-top:4px solid var(--line);padding-top:6px;font-size:12.5px;color:var(--muted);line-height:1.25}
+.pipe li.done{border-color:var(--brand);color:var(--ink)}
+.pipe li.next{border-color:var(--amber);color:var(--ink);font-weight:700}
+@media (max-width:720px){.pipe{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+.timeline{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.timeline li{display:grid;grid-template-columns:14px 1fr;gap:10px;padding-bottom:12px;position:relative}
+.timeline li::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--brand);margin-top:6px}
+.timeline li:not(:last-child)::after{content:"";position:absolute;left:4px;top:18px;bottom:0;width:2px;background:var(--line)}
+
+/* tarjeta de vuelo en búsqueda */
+.fcard{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
+.fcard .times{display:flex;gap:14px;align-items:center}
+.fcard .t{font-family:var(--display);font-stretch:80%;font-size:26px;font-weight:700;line-height:1}
+.fcard .code{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.fcard .line{flex:1;height:2px;background:var(--line);min-width:30px;position:relative}
+.fcard .price{text-align:right}
+.fcard .price b{font-family:var(--display);font-stretch:85%;font-size:22px}
+@media (max-width:640px){.fcard{grid-template-columns:1fr}.fcard .price{text-align:left}}
+
+/* pase de abordar */
+.pass{display:grid;grid-template-columns:1fr 150px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.pass .a{padding:18px;background:var(--surface)}
+.pass .b{padding:18px;background:var(--brand);color:var(--brand-ink);border-left:2px dashed var(--brand-soft)}
+.pass .big{font-family:var(--display);font-stretch:78%;font-size:34px;font-weight:800;line-height:1}
+.pass dl{display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;margin:12px 0 0}
+.pass dt{font-size:11.5px;color:var(--muted)} .pass dd{margin:0;font-weight:700}
+.pass .b dt{color:inherit;opacity:.75}
+@media (max-width:520px){.pass{grid-template-columns:1fr}.pass .b{border-left:0;border-top:2px dashed var(--brand-soft)}}
+
+/* arquitectura */
+.arch{display:grid;gap:10px}
+.layer{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:var(--surface);display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start}
+.layer h4{margin-bottom:2px}
+.layer .chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:13px;padding:3px 10px;border-radius:7px;background:var(--sunk);border:1px solid var(--line)}
+.chip.ext{border-style:dashed;color:var(--warn)}
+.arrow{justify-self:center;color:var(--muted);font-size:13px}
+@media (max-width:640px){.layer{grid-template-columns:1fr}}
+
+/* gráfico */
+.chart svg{width:100%;height:auto;display:block}
+.chart .bar{fill:var(--brand)}
+.chart .axis{stroke:var(--line)}
+.chart text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.chart .val{fill:var(--ink)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
+.kpi b{display:block;font-family:var(--display);font-stretch:85%;font-size:22px}
+.kpi span{font-size:12.5px;color:var(--muted)}
+
+pre.sqlbox{margin:0;font-family:var(--mono);font-size:12.5px;background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:12px;overflow-x:auto;white-space:pre;color:var(--sql)}
+details summary{cursor:pointer;font-weight:600;color:var(--brand)}
+
+/* registro */
+#log{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -12px 30px rgba(0,0,0,.18);max-height:62vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
+#log .lh{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+#log .lh h3{margin-right:auto}
+#log .lb{overflow-y:auto}
+.le{display:grid;grid-template-columns:68px 1fr;gap:2px 12px;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);font-size:13.5px}
+.le time{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding-top:2px}
+.le .c{font-weight:700}
+.le code{display:block;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word;color:var(--sql)}
+.k-ui{color:var(--muted)} .k-gestor{color:var(--brand)} .k-bd{color:var(--sql)} .k-ext{color:var(--warn)} .k-err{color:var(--bad)} .k-etl{color:var(--ok)}
+
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(5,12,18,.55);z-index:50}
+.dialog{position:fixed;z-index:51;left:50%;top:50%;transform:translate(-50%,-50%);width:min(620px,calc(100% - 28px));max-height:calc(100% - 40px);overflow:auto;background:var(--surface);border-radius:16px;padding:22px;display:grid;gap:14px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));z-index:60;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:9px;font-weight:600;max-width:calc(100% - 28px)}
+.loading{display:grid;place-items:center;min-height:60vh;color:var(--muted);text-align:center;gap:8px}
+@media (max-width:760px){.top .nav{order:3;flex-basis:100%}.logbtn .lbl{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div id="app"><div class="loading wrapx"><div><h3>Cargando el sistema de Beta Airlines…</h3><p>Creando las bases de datos con el esquema generado en Enterprise Architect.</p></div></div></div>
+<section id="log" hidden aria-label="Registro del sistema"></section>
+<div id="modal" hidden></div>
+<div id="toast" role="status" hidden></div>
+
+<script type="text/plain" id="ddl-bd">/*DDLBD*/</script>
+<script type="text/plain" id="ddl-dw">/*DDLDW*/</script>
+<script>/*SQLJS*/</script>
+<script>const WASM_B64="/*WASM*/";</script>
+<script>
+/* ============================================================
+   PROTOTIPO BETA AIRLINES  (Parcial 2, punto 5)
+   Capa de presentación: esta interfaz.
+   Capa de negocio: los "gestores" (objetos JS de abajo).
+   Capa de persistencia: dos bases SQL reales (SQLite/WebAssembly)
+   creadas con TablesBD.sql y TablesDW.sql generados por EA.
+   Simulado: pasarela de pagos, correo, inicio de sesión.
+   ============================================================ */
+const STORE = 'beta-proto-v1';
+let SQLlib, bd, dw;
+const st = { area:'inicio', sub:{pas:'buscar', ops:'tablero', ana:'4a', db:'bd'}, user:null, logOpen:false, unseen:0,
+  log:[], search:null, selVuelo:null, dbTable:{bd:'Vuelo', dw:'FactVentaTiquetes'}, consola:{bd:'', dw:''}, consolaRes:null,
+  anaYear:null, anaCiudad:'origen', pendingRes:null, etl:null, changes:0, pay:null, pend:{} };
+
+/* ---------------- utilidades ---------------- */
+const h = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = (n,l) => String(n).padStart(l,'0');
+const USD = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
+const USD2 = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2});
+const money = v => USD.format(Number(v)||0);
+const NUM = new Intl.NumberFormat('es-CO');
+const num = v => NUM.format(Number(v)||0);
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MES3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function dstr(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1,2)}-${pad(d.getDate(),2)}`; }
+function dtstr(d){ return `${dstr(d)} ${pad(d.getHours(),2)}:${pad(d.getMinutes(),2)}:00`; }
+const parse = s => s ? new Date(String(s).replace(' ','T')) : null;
+const addMin = (d,m) => new Date(d.getTime()+m*60000);
+const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const fDate = s => { const d=parse(s); return d? d.toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'}):'—'; };
+const fDateY = s => { const d=parse(s); return d? d.toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'}):'—'; };
+const fTime = s => { const d=parse(s); return d? `${pad(d.getHours(),2)}:${pad(d.getMinutes(),2)}`:'—'; };
+const fDT = s => s ? `${fDate(s)} ${fTime(s)}` : '—';
+const nowS = () => dtstr(new Date());
+let rnd = mulberry(20261015);
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const ri = (a,b) => a+Math.floor(rnd()*(b-a+1));
+const pick = arr => arr[Math.floor(rnd()*arr.length)];
+function wpick(pairs){ const tot=pairs.reduce((s,p)=>s+p[1],0); let x=rnd()*tot; for(const [v,w] of pairs){ if((x-=w)<0) return v; } return pairs[0][0]; }
+const sqlv = v => v===null||v===undefined ? 'NULL' : (typeof v==='number' ? String(v) : `'${String(v).replace(/'/g,"''")}'`);
+function fmtSQL(sql, params){ let i=0; return sql.replace(/\?/g, () => sqlv(params[i++])).replace(/\s+\n/g,'\n').trim(); }
+
+/* ---------------- persistencia (SQL real) ---------------- */
+let logging = true;
+function log(comp, msg, kind='gestor'){
+  if(!logging) return;
+  st.log.unshift({t:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'}), comp, msg, kind});
+  if(st.log.length>400) st.log.length=400;
+  if(!st.logOpen) st.unseen++;
+}
+function exec(db, sql, params=[], comp){ db.run(sql, params); if(comp) log(comp+' → '+(db===dw?'DW':'BD'), fmtSQL(sql,params), 'bd'); }
+function all(db, sql, params=[], comp){
+  const s = db.prepare(sql); s.bind(params); const out=[]; while(s.step()) out.push(s.getAsObject()); s.free();
+  if(comp) log(comp+' → '+(db===dw?'DW':'BD'), fmtSQL(sql,params)+`\n-- ${out.length} fila(s)`, 'bd');
+  return out;
+}
+const one = (db, sql, p=[], c) => all(db, sql, p, c)[0];
+function insert(db, table, obj, comp){
+  const cols=Object.keys(obj); const sql=`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(()=>'?').join(', ')})`;
+  exec(db, sql, cols.map(c=>obj[c]), comp);
+}
+function update(db, table, set, where, comp){
+  const sc=Object.keys(set), wc=Object.keys(where);
+  exec(db, `UPDATE ${table} SET ${sc.map(c=>c+' = ?').join(', ')} WHERE ${wc.map(c=>c+' = ?').join(' AND ')}`, [...sc.map(c=>set[c]), ...wc.map(c=>where[c])], comp);
+}
+const PREFIX = {Ciudad:'CI',Aeropuerto:'AP',Departamento:'DP',Empleado:'EM',Cliente:'CL',Ruta:'RU',Vuelo:'VU',Aeronave:'AN',Equipo:'EQ',Mantenimiento:'MT',AsignacionTripulacion:'AT',EventoVuelo:'EV',Reserva:'RS',Tiquete:'TQ',Factura:'FA',Pago:'PG',Checkin:'CK',Equipaje:'EJ',RastreoEquipaje:'RE',CuentaMillas:'CM',MovimientoMillas:'MM',CasoServicio:'CS'};
+const PKC = {Ciudad:'IdCiudad',Aeropuerto:'IdAeropuerto',Departamento:'IdDepartamento',Empleado:'IdEmpleado',Cliente:'IdCliente',Ruta:'IdRuta',Vuelo:'IdVuelo',Aeronave:'IdAeronave',Equipo:'IdEquipo',Mantenimiento:'IdMantenimiento',AsignacionTripulacion:'IdAsignacion',EventoVuelo:'IdEvento',Reserva:'IdReserva',Tiquete:'IdTiquete',Factura:'IdFactura',Pago:'IdPago',Checkin:'IdCheckin',Equipaje:'IdEquipaje',RastreoEquipaje:'IdRastreo',CuentaMillas:'IdCuentaMillas',MovimientoMillas:'IdMovimiento',CasoServicio:'IdCaso'};
+const seq = {};
+function nextId(t){ if(seq[t]===undefined){ const r=one(bd,`SELECT MAX(${PKC[t]}) m FROM ${t}`); seq[t]= r&&r.m ? parseInt(String(r.m).slice(2),10) : 0; } seq[t]++; return PREFIX[t]+pad(seq[t],8); }
+
+/* Convierte el DDL MySQL generado por EA en DDL que entiende el motor embebido:
+   las FK y UNIQUE que EA agrega con ALTER TABLE se pasan dentro del CREATE TABLE. */
+const SCHEMA = {bd:{}, dw:{}};
+function adaptDDL(text, key){
+  SCHEMA[key] ||= {};
+  const clean = text.replace(/\/\*[\s\S]*?\*\//g,'');
+  const stmts = clean.split(';').map(s=>s.trim()).filter(Boolean);
+  const tables = {}, order=[], idx=[];
+  for(const s of stmts){
+    let m;
+    if(/^SET\s/i.test(s) || /^DROP\s/i.test(s)) continue;
+    if((m = s.match(/^CREATE TABLE `(\w+)`\s*\(([\s\S]*)\)\s*$/i))){ tables[m[1]]={body:m[2].trim(), extra:[]}; order.push(m[1]); continue; }
+    if((m = s.match(/^ALTER TABLE `(\w+)`\s+ADD INDEX `(\w+)`\s*\(([^)]*)\)/i))){ idx.push(`CREATE INDEX ${m[2]} ON ${m[1]} (${m[3].replace(/`/g,'')})`); continue; }
+    if((m = s.match(/^ALTER TABLE `(\w+)`\s+ADD CONSTRAINT `(\w+)`\s+UNIQUE\s*\(([^)]*)\)/i))){ tables[m[1]].extra.push(`CONSTRAINT ${m[2]} UNIQUE (${m[3].replace(/`/g,'')})`); continue; }
+    if((m = s.match(/^ALTER TABLE `(\w+)`\s+ADD CONSTRAINT `(\w+)`\s+FOREIGN KEY\s*\(([^)]*)\)\s*REFERENCES `(\w+)`\s*\(([^)]*)\)/i))){
+      tables[m[1]].extra.push(`CONSTRAINT ${m[2]} FOREIGN KEY (${m[3].replace(/`/g,'')}) REFERENCES ${m[4]} (${m[5].replace(/`/g,'')})`);
+      (SCHEMA[key][m[1]] ||= {cols:[],fks:{}}).fks[m[3].replace(/`/g,'').trim()] = m[4]; continue; }
+  }
+  const out=[];
+  for(const t of order){
+    const body = tables[t].body.replace(/`/g,'');
+    const cols = []; let pk=null;
+    body.split('\n').forEach(l=>{ const c=l.trim().replace(/,$/,''); let mm;
+      if((mm=c.match(/^CONSTRAINT \w+ PRIMARY KEY \((\w+)/))) pk=mm[1];
+      else if((mm=c.match(/^(\w+)\s+([A-Z]+(?:\(\d+(?:,\d+)?\))?)\s+(NOT NULL|NULL)/))) cols.push({name:mm[1],type:mm[2],nn:mm[3]==='NOT NULL'}); });
+    const sch = (SCHEMA[key][t] ||= {cols:[],fks:{}}); sch.cols=cols; sch.pk=pk;
+    out.push(`CREATE TABLE ${t}\n(\n\t${body.split('\n').map(l=>l.trim()).filter(Boolean).join('\n\t')}${tables[t].extra.length? ',\n\t'+tables[t].extra.join(',\n\t'):''}\n)`);
+  }
+  return out.concat(idx);
+}
+function save(){
+  try{
+    const b = u8 => { let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); };
+    localStorage.setItem(STORE, JSON.stringify({bd:b(bd.export()), dw:b(dw.export()), etl:st.etl, changes:st.changes, user:st.user, pend:st.pend}));
+  }catch(e){}
+  try{ bd.run('PRAGMA foreign_keys = ON'); dw.run('PRAGMA foreign_keys = ON'); }catch(e){}
+}
+let saveT; const saveSoon = () => { clearTimeout(saveT); saveT=setTimeout(save,500); };
+function loadSaved(){
+  try{ const raw=localStorage.getItem(STORE); if(!raw) return false; const o=JSON.parse(raw);
+    const u = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+    bd = new SQLlib.Database(u(o.bd)); dw = new SQLlib.Database(u(o.dw)); st.etl=o.etl; st.changes=o.changes||0; st.user=o.user||null; st.pend=o.pend||{};
+    bd.run('PRAGMA foreign_keys = ON'); dw.run('PRAGMA foreign_keys = ON'); return true; }catch(e){ return false; }
+}
+function createDBs(){
+  bd = new SQLlib.Database(); dw = new SQLlib.Database();
+  bd.run('PRAGMA foreign_keys = ON'); dw.run('PRAGMA foreign_keys = ON');
+  for(const s of adaptDDL(document.getElementById('ddl-bd').textContent,'bd')) bd.run(s);
+  for(const s of adaptDDL(document.getElementById('ddl-dw').textContent,'dw')) dw.run(s);
+}
+
+/* ---------------- datos de ejemplo ---------------- */
+const CIUDADES = [
+ ['Atlanta','Georgia','Estados Unidos','ATL','Hartsfield-Jackson Atlanta International'],
+ ['Nueva York','Nueva York','Estados Unidos','JFK','John F. Kennedy International'],
+ ['Los Ángeles','California','Estados Unidos','LAX','Los Angeles International'],
+ ['Chicago','Illinois','Estados Unidos','ORD',"O'Hare International"],
+ ['Miami','Florida','Estados Unidos','MIA','Miami International'],
+ ['Seattle','Washington','Estados Unidos','SEA','Seattle-Tacoma International'],
+ ['Boston','Massachusetts','Estados Unidos','BOS','Logan International'],
+ ['Dallas','Texas','Estados Unidos','DFW','Dallas/Fort Worth International'],
+ ['Bogotá','Cundinamarca','Colombia','BOG','El Dorado International'],
+ ['Ciudad de México','CDMX','México','MEX','Benito Juárez International'],
+ ['Londres','Inglaterra','Reino Unido','LHR','Heathrow'],
+ ['Madrid','Comunidad de Madrid','España','MAD','Adolfo Suárez Madrid-Barajas']];
+const PARES = [['ATL','JFK',760],['ATL','LAX',1946],['ATL','ORD',606],['ATL','MIA',594],['ATL','SEA',2182],['ATL','BOS',946],['ATL','DFW',731],
+ ['JFK','LAX',2475],['ORD','SEA',1721],['JFK','MIA',1089],['ATL','BOG',2130],['ATL','MEX',1332],['JFK','LHR',3451],['ATL','MAD',4381]];
+const AERONAVES = [['N801BA','Boeing 737-800',160],['N802BA','Boeing 737-800',160],['N321BA','Airbus A321neo',196],['N322BA','Airbus A321neo',196],
+ ['N757BA','Boeing 757-200',199],['N717BA','Boeing 717-200',110],['N767BA','Boeing 767-300ER',211],['N330BA','Airbus A330-300',293]];
+const DEPTOS = ['Reservas','Pagos','Facturas','Despachos','Tripulación','Embarque','Servicio al cliente','Mantenimiento','Operaciones','Marketing'];
+const NOMBRES = ['Laura','Daniel','Emily','Carlos','Sofía','Michael','Valentina','James','Camila','David','Mariana','Robert','Lucía','William','Isabella','Andrés','Olivia','Juan','Emma','Diego','Ava','Santiago','Mia','Mateo','Grace','Felipe','Chloe','Tomás','Hannah','Nicolás','Ana','Luis','Paula','Kevin','Sara','Brian','Natalia','Jorge','Rachel','Pablo'];
+const APELLIDOS = ['Gómez','Ortiz','Carter','Ramírez','Hernández','Johnson','Torres','Smith','Rojas','Miller','Castro','Brown','Vargas','Davis','Moreno','Wilson','Jiménez','Taylor','Ruiz','Anderson','Silva','Thomas','Mendoza','Moore','Reyes'];
+const CANALES_RES = [['Web',38],['App',27],['Agente de viajes',15],['Call center',10],['Mostrador',10]];
+const CANALES_CK = [['Web',35],['App',30],['Kiosko',20],['Mostrador',15]];
+const CLASES = [['Económica',78],['Premium',15],['Ejecutiva',7]];
+const CLASE_F = {'Económica':1,'Premium':1.7,'Ejecutiva':3.2};
+const ETAPAS = ['Asignar recursos','Preparar salida','Cargar aeronave','Despegue y cierre','Monitorear vuelo','Llegada y cierre','Descargar aeronave','Limpiar y alistar'];
+const ETAPA_EN = ['Allocate Resources','Prepare for Flight Departure','Load Aircraft','Flight Departure and Closeout','Monitor Flight','Flight Arrival and Closeout','Unload Aircraft','Clean / Service Aircraft'];
+const ESTADO_TRAS = ['Recursos asignados','En preparación','Abordando','En vuelo','En vuelo','Aterrizado','Descargando','Finalizado'];
+const precioBase = (dist, mes) => Math.round((49 + dist*0.14) * ([1,0.92,1,1.03,1.05,1.18,1.22,1.12,0.95,0.98,1.06,1.2][mes]));
+const durMin = dist => Math.round(dist/470*60 + 30);
+const nivelPor = m => m>=60000?'Platino': m>=30000?'Oro': m>=12000?'Plata':'Azul';
+const code6 = () => Array.from({length:6},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(rnd()*32)]).join('');
+
+function seed(){
+  logging=false; rnd = mulberry(20261015);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const start = new Date(today.getFullYear(),0,1);
+  bd.run('BEGIN');
+  const I = (t,o) => insert(bd,t,o);
+  const ciu={}, aer={}, aerCity={};
+  CIUDADES.forEach((c,i)=>{ const id='CI'+pad(i+1,8); I('Ciudad',{IdCiudad:id,Nombre:c[0],EstadoRegion:c[1],Pais:c[2]}); ciu[c[3]]=id;
+    const ap='AP'+pad(i+1,8); I('Aeropuerto',{IdAeropuerto:ap,CodigoIATA:c[3],Nombre:c[4],IdCiudad:id}); aer[c[3]]=ap; aerCity[ap]=c; });
+  DEPTOS.forEach((d,i)=> I('Departamento',{IdDepartamento:'DP'+pad(i+1,8),Nombre:d}));
+  const emp=[]; const addEmp=(cargo,dep)=>{ const id='EM'+pad(emp.length+1,8); I('Empleado',{IdEmpleado:id,Documento:String(ri(10000000,99999999)),Nombres:pick(NOMBRES),Apellidos:pick(APELLIDOS),Cargo:cargo,FechaIngreso:dstr(new Date(ri(2008,2024),ri(0,11),ri(1,28))),IdDepartamento:'DP'+pad(dep,8)}); emp.push({id,cargo}); };
+  for(let i=0;i<5;i++) addEmp('Capitán',5); for(let i=0;i<5;i++) addEmp('Primer oficial',5); for(let i=0;i<8;i++) addEmp('Auxiliar de vuelo',5);
+  for(let i=0;i<3;i++) addEmp('Técnico de mantenimiento',8); for(let i=0;i<3;i++) addEmp('Despachador',4); for(let i=0;i<3;i++) addEmp('Agente de servicio al cliente',7);
+  for(let i=0;i<2;i++) addEmp('Agente de embarque',6); addEmp('Coordinador de operaciones',9); addEmp('Agente de reservas',1); addEmp('Analista de pagos',2);
+  AERONAVES.forEach((a,i)=> I('Aeronave',{IdAeronave:'AN'+pad(i+1,8),Matricula:a[0],Modelo:a[1],CapacidadPasajeros:a[2],Estado:'Activa'}));
+  let eq=0; ['ATL','JFK','LAX','ORD','MIA'].forEach(c=>['Escalera de abordaje','Tractor de remolque','Cinta de equipaje','Lector de puerta'].forEach(t=>{ I('Equipo',{IdEquipo:'EQ'+pad(++eq,8),Tipo:t,Descripcion:`${t} asignado a ${c}`,Estado:'Disponible',IdAeropuerto:aer[c]}); }));
+  // clientes
+  const cl=[]; const used=new Set();
+  const addCli=(n,a,ciuCode)=>{ const id='CL'+pad(cl.length+1,8); let doc; do{doc=String(ri(1000000000,1099999999));}while(used.has(doc)); used.add(doc);
+    I('Cliente',{IdCliente:id,Documento:doc,Nombres:n,Apellidos:a,Email:`${n}.${a}`.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()+'@correo.com',Telefono:'+1 404 '+ri(200,999)+' '+ri(1000,9999),FechaNacimiento:dstr(new Date(ri(1960,2003),ri(0,11),ri(1,28))),IdCiudad:ciu[ciuCode]}); cl.push(id); return id; };
+  addCli('Laura','Gómez','ATL'); addCli('Daniel','Ortiz','JFK'); addCli('Emily','Carter','ATL');
+  for(let i=0;i<57;i++) addCli(pick(NOMBRES),pick(APELLIDOS), wpick([['ATL',30],['JFK',15],['LAX',10],['ORD',8],['MIA',8],['SEA',5],['BOS',5],['DFW',5],['BOG',6],['MEX',4],['LHR',2],['MAD',2]]));
+  const cuenta={}; cl.forEach((c,i)=>{ if(i===2 || (i>2 && rnd()<0.3)) return; const id='CM'+pad(Object.keys(cuenta).length+1,8); cuenta[c]=id;
+    I('CuentaMillas',{IdCuentaMillas:id,NumeroSocio:'BA'+ri(100000000,999999999),Nivel:'Azul',SaldoMillas:0,FechaAfiliacion:dstr(new Date(ri(2015,2025),ri(0,11),ri(1,28))),IdCliente:c}); });
+  // rutas
+  const rutas=[]; let rn=0;
+  PARES.forEach(([o,d,dist])=>{ const tipo = aerCity[aer[o]][2]===aerCity[aer[d]][2]?'Nacional':'Internacional';
+    [[o,d],[d,o]].forEach(([a,b])=>{ const id='RU'+pad(++rn,8); I('Ruta',{IdRuta:id,IdAeropuertoOrigen:aer[a],IdAeropuertoDestino:aer[b],DistanciaMillas:dist,TipoRuta:tipo}); rutas.push({id,o:a,d:b,dist,tipo}); }); });
+  const naveFor = r => r.dist>3000 ? pick(['AN00000007','AN00000008']) : r.dist>1800 ? pick(['AN00000003','AN00000004','AN00000005']) : r.dist<700 ? pick(['AN00000006','AN00000001']) : pick(['AN00000001','AN00000002','AN00000003']);
+  const cap = {AN00000001:160,AN00000002:160,AN00000003:196,AN00000004:196,AN00000005:199,AN00000006:110,AN00000007:211,AN00000008:293};
+  let nv=0,nr=0,nt=0,nf=0,np=0,nc=0,ne=0,nre=0,nm=0,nev=0,nat=0;
+  const pilots=emp.filter(e=>/Capitán|Primer/.test(e.cargo)).map(e=>e.id), aux=emp.filter(e=>/Auxiliar/.test(e.cargo)).map(e=>e.id), desp=emp.filter(e=>/Despachador|Coordinador/.test(e.cargo)).map(e=>e.id), tec=emp.filter(e=>/Técnico/.test(e.cargo)).map(e=>e.id), sac=emp.filter(e=>/servicio al cliente/.test(e.cargo)).map(e=>e.id);
+  const millasPor = {};
+  const vuelo=(r,salida,past)=>{
+    const id='VU'+pad(++nv,8), nave=naveFor(r), lleg=addMin(salida,durMin(r.dist));
+    const num='BA'+(100+PARES.findIndex(p=>(p[0]===r.o&&p[1]===r.d)||(p[1]===r.o&&p[0]===r.d))*10 + (r.o<r.d?1:2));
+    const sr = past? addMin(salida, ri(-3,35)) : null, lr = past? addMin(lleg, ri(-10,40)) : null;
+    I('Vuelo',{IdVuelo:id,NumeroVuelo:num,SalidaProgramada:dtstr(salida),LlegadaProgramada:dtstr(lleg),SalidaReal:sr?dtstr(sr):null,LlegadaReal:lr?dtstr(lr):null,Puerta:past?pick(['A','B','C','D','E','T'])+ri(1,36):null,Estado:past?'Finalizado':'Programado',IdRuta:r.id,IdAeronave:nave});
+    return {id,r,salida,lleg,sr,lr,nave};
+  };
+  const reservas=(v,past,n,forced)=>{
+    for(let k=0;k<n;k++){
+      let tit=(k===0&&forced)?forced:pick(cl); if(!forced && tit==='CL00000001') tit=pick(cl.slice(3)); const pax=wpick([[1,55],[2,35],[3,10]]); const canal=wpick(CANALES_RES);
+      const lead=Math.max(1,Math.min(past?45:28, Math.floor((v.salida-start)/864e5))); let fr = addDays(v.salida, -ri(1,lead)); fr.setHours(ri(6,23),ri(0,59)); if(fr<start) fr=new Date(start.getTime()+ri(1,20)*3600000);
+      if(fr > new Date()) fr = addMin(new Date(), -ri(60,60*24*5));
+      const cancel = past && rnd()<0.05;
+      const rid='RS'+pad(++nr,8);
+      I('Reserva',{IdReserva:rid,CodigoReserva:code6(),FechaReserva:dtstr(fr),Canal:canal,NumeroPasajeros:pax,Estado:cancel?'Cancelada':(past?'Completada':'Confirmada'),IdCliente:tit,IdVuelo:v.id});
+      if(cancel) continue;
+      const clase=wpick(CLASES); const fe=addMin(fr,ri(5,600)); let sub=0; const tqs=[];
+      for(let p=0;p<pax;p++){ const c = p===0? tit : pick(cl); const val = Math.round(precioBase(v.r.dist, v.salida.getMonth())*CLASE_F[clase]*(0.9+rnd()*0.25)*100)/100; sub+=val;
+        const tq='TQ'+pad(++nt,8); I('Tiquete',{IdTiquete:tq,NumeroTiquete:'777'+ri(1000000000,9999999999),FechaEmision:dtstr(fe),Clase:clase,Asiento:past? ri(3,38)+pick(['A','B','C','D','E','F']):null,Valor:val,Estado:past?'Volado':'Emitido',IdReserva:rid,IdCliente:c}); tqs.push([tq,c]); }
+      const imp=Math.round(sub*0.075*100)/100; const fa='FA'+pad(++nf,8);
+      I('Factura',{IdFactura:fa,NumeroFactura:'FE-'+pad(nf,8),FechaEmision:dtstr(fe),Subtotal:Math.round(sub*100)/100,Impuestos:imp,Total:Math.round((sub+imp)*100)/100,IdReserva:rid});
+      I('Pago',{IdPago:'PG'+pad(++np,8),FechaPago:dtstr(fe),Valor:Math.round((sub+imp)*100)/100,MedioPago:wpick([['Tarjeta de crédito',70],['Tarjeta débito',18],['PayPal',12]]),Estado:'Aprobado',Referencia:'PSX-'+ri(10000000,99999999),IdFactura:fa});
+      if(!past) continue;
+      for(const [tq,c] of tqs){
+        I('Checkin',{IdCheckin:'CK'+pad(++nc,8),FechaHora:dtstr(addMin(v.salida,-ri(90,60*22))),Canal:wpick(CANALES_CK),PuertaEmbarque:null,FechaEmbarque:dtstr(addMin(v.sr,-ri(15,40))),IdTiquete:tq});
+        if(rnd()<0.45){ const ej='EJ'+pad(++ne,8); I('Equipaje',{IdEquipaje:ej,CodigoEtiqueta:'BA'+ri(10000000,99999999),PesoKg:Math.round((12+rnd()*11)*10)/10,Estado:'Entregada',IdTiquete:tq});
+          [['Documentada en mostrador',v.sr,-70,v.r.o],['Cargada en bodega',v.sr,-30,v.r.o],['Descargada',v.lr,15,v.r.d],['Entregada en banda',v.lr,30,v.r.d]].forEach(([pc,base,m,ap])=> I('RastreoEquipaje',{IdRastreo:'RE'+pad(++nre,8),FechaHora:dtstr(addMin(base,m)),PuntoControl:pc,Estado:pc.includes('Entregada')?'Entregada':'En tránsito',IdEquipaje:ej,IdAeropuerto:aer[ap]})); }
+        if(cuenta[c]){ I('MovimientoMillas',{IdMovimiento:'MM'+pad(++nm,8),Fecha:dtstr(v.lr),Tipo:'Acumulacion',Millas:v.r.dist,IdCuentaMillas:cuenta[c],IdTiquete:tq}); millasPor[c]=(millasPor[c]||0)+v.r.dist; }
+      }
+    }
+  };
+  const recent = addDays(today,-10);
+  for(let d=new Date(start); d<today; d=addDays(d,1)){
+    rutas.forEach((r,ri_)=>{ // dos vuelos al mes por ruta en la historia; diario en las últimas 3 semanas para las rutas principales
+      const day=d.getDate(); const histo = (day===((ri_*3)%14)+3 || day===((ri_*3)%14)+17); const reciente = d>=recent && r.o==='ATL' && (d.getDate()+ri_)%3===0;
+      if(!histo && !reciente) return;
+      const sal=new Date(d); sal.setHours(6+ (ri_%14), (ri_*7)%60);
+      const v=vuelo(r,sal,true); const demoH = ((r.o==='ATL'&&r.d==='JFK')||(r.o==='JFK'&&r.d==='ATL')||(r.o==='ATL'&&r.d==='MIA')) && day<=12 ? 'CL00000001' : null; reservas(v,true, ri(2,5), demoH);
+      if(d>=recent){ [pick(pilots),pick(pilots),pick(aux),pick(aux)].filter((x,i,a)=>a.indexOf(x)===i).forEach((e,k)=> I('AsignacionTripulacion',{IdAsignacion:'AT'+pad(++nat,8),Rol:['Capitán','Primer oficial','Auxiliar de vuelo','Auxiliar de vuelo'][k]||'Auxiliar de vuelo',IdVuelo:v.id,IdEmpleado:e}));
+        ETAPAS.forEach((et,k)=>{ const base = k<3? addMin(v.sr,-120+k*40) : k<5? addMin(v.sr,(k-3)*60) : addMin(v.lr,(k-5)*25);
+          I('EventoVuelo',{IdEvento:'EV'+pad(++nev,8),TipoEvento:et,FechaHora:dtstr(base),Descripcion:`${ETAPA_EN[k]} completado`,IdVuelo:v.id,IdEmpleado:pick(desp)}); }); }
+    });
+  }
+  // vuelos próximos: diarios por ruta durante 10 días
+  for(let k=0;k<10;k++){ const d=addDays(today,k); rutas.forEach((r,i)=>{ if(r.dist>3000 && k%2) return; const sal=new Date(d); sal.setHours(6+(i%15), (i*11)%60); const v=vuelo(r,sal,false); const demo = (k===1 && r.o==='ATL' && r.d==='JFK') ? 'CL00000001' : (k===2 && r.o==='JFK' && r.d==='LAX') ? 'CL00000002' : null; reservas(v,false, demo? Math.max(2,ri(2,4)) : (k<3? ri(2,4): ri(0,2)), demo); }); }
+  // saldos y niveles de millas
+  Object.entries(millasPor).forEach(([c,m])=>{ const extra=ri(0,9000); update(bd,'CuentaMillas',{SaldoMillas:m+extra,Nivel:nivelPor(m+extra)},{IdCuentaMillas:cuenta[c]}); });
+  // mantenimiento y servicio al cliente
+  for(let i=0;i<14;i++){ const f=addDays(start, ri(0, Math.max(1,Math.floor((today-start)/864e5)-1))); f.setHours(ri(0,23));
+    I('Mantenimiento',{IdMantenimiento:'MT'+pad(i+1,8),FechaInicio:dtstr(f),FechaFin:dtstr(addMin(f,ri(60,600))),Tipo:pick(['Inspección A','Servicio de rutina','Cambio de neumáticos','Revisión de motor','Inspección de cabina']),Descripcion:'Registro histórico de mantenimiento',Estado:'Completado',IdAeronave:'AN'+pad(ri(1,8),8),IdEmpleado:pick(tec)}); }
+  const tipos=['Equipaje demorado','Cambio de vuelo','Reembolso','Queja de servicio','Solicitud de asistencia'];
+  for(let i=0;i<16;i++){ const f=addDays(today,-ri(1,120)); f.setHours(ri(7,21)); const est=i<4?'Abierto':i<6?'En atención':'Cerrado';
+    I('CasoServicio',{IdCaso:'CS'+pad(i+1,8),FechaApertura:dtstr(f),FechaCierre:est==='Cerrado'?dtstr(addDays(f,ri(1,4))):null,Tipo:pick(tipos),Canal:pick(['Web','App','Call center','Mostrador']),Descripcion:'Caso registrado por el pasajero',Estado:est,IdCliente:pick(cl),IdEmpleado:est==='Abierto'?null:pick(sac)}); }
+  bd.run('COMMIT'); logging=true;
+}
+
+/* ---------------- capa de negocio: gestores ---------------- */
+const SEATS='ABCDEF';
+const G = {
+  vuelosInfo(where, params){
+    return all(bd, `SELECT v.*, r.DistanciaMillas, r.TipoRuta, ao.CodigoIATA o, ad.CodigoIATA d, co.Nombre co, cd.Nombre cd, a.Modelo, a.Matricula, a.CapacidadPasajeros cap,
+      (SELECT COUNT(*) FROM Tiquete t JOIN Reserva x ON x.IdReserva=t.IdReserva WHERE x.IdVuelo=v.IdVuelo AND t.Estado<>'Anulado') vendidos
+      FROM Vuelo v JOIN Ruta r ON r.IdRuta=v.IdRuta JOIN Aeropuerto ao ON ao.IdAeropuerto=r.IdAeropuertoOrigen JOIN Aeropuerto ad ON ad.IdAeropuerto=r.IdAeropuertoDestino
+      JOIN Ciudad co ON co.IdCiudad=ao.IdCiudad JOIN Ciudad cd ON cd.IdCiudad=ad.IdCiudad JOIN Aeronave a ON a.IdAeronave=v.IdAeronave ${where}`, params);
+  },
+  buscar(o,d,fecha){
+    log('GestorReservas','Buscando vuelos disponibles '+o+' → '+d+' el '+fecha);
+    return all(bd, `SELECT v.IdVuelo, v.NumeroVuelo, v.SalidaProgramada, v.LlegadaProgramada, r.DistanciaMillas, r.TipoRuta, a.Modelo, a.CapacidadPasajeros -
+       (SELECT COUNT(*) FROM Tiquete t JOIN Reserva x ON x.IdReserva = t.IdReserva WHERE x.IdVuelo = v.IdVuelo) AS Disponibles
+     FROM Vuelo v
+     JOIN Ruta r ON r.IdRuta = v.IdRuta
+     JOIN Aeropuerto ao ON ao.IdAeropuerto = r.IdAeropuertoOrigen
+     JOIN Aeropuerto ad ON ad.IdAeropuerto = r.IdAeropuertoDestino
+     JOIN Aeronave a ON a.IdAeronave = v.IdAeronave
+     WHERE ao.CodigoIATA = ? AND ad.CodigoIATA = ? AND date(v.SalidaProgramada) = ? AND v.Estado = 'Programado'
+     ORDER BY v.SalidaProgramada`, [o,d,fecha], 'GestorReservas');
+  },
+  crearReserva(idVuelo, clase, pasajeros){
+    log('Interfaz','El pasajero confirma la reserva','ui');
+    log('GestorReservas','Validando pasajeros y disponibilidad del vuelo '+idVuelo);
+    bd.run('BEGIN');
+    try{
+      const ids = pasajeros.map((p,i)=>{ if(i===0) return st.user;
+        const ex = one(bd,'SELECT IdCliente FROM Cliente WHERE Documento = ?',[p.doc],'GestorReservas'); if(ex) return ex.IdCliente;
+        const u=one(bd,'SELECT Email, IdCiudad FROM Cliente WHERE IdCliente = ?',[st.user]);
+        const id=nextId('Cliente'); insert(bd,'Cliente',{IdCliente:id,Documento:p.doc,Nombres:p.n,Apellidos:p.a,Email:u.Email,Telefono:null,FechaNacimiento:null,IdCiudad:u.IdCiudad},'GestorReservas'); return id; });
+      const rid=nextId('Reserva'), cod=code6();
+      insert(bd,'Reserva',{IdReserva:rid,CodigoReserva:cod,FechaReserva:nowS(),Canal:'Web',NumeroPasajeros:pasajeros.length,Estado:'Pendiente de pago',IdCliente:st.user,IdVuelo:idVuelo},'GestorReservas');
+      bd.run('COMMIT'); log('GestorReservas',`Reserva ${rid} (código ${cod}) creada, pendiente de pago`);
+      st.changes++; st.pend[rid]={ids, clase}; return {rid, cod, ids, clase};
+    }catch(e){ bd.run('ROLLBACK'); log('GestorReservas','Error: '+e.message,'err'); throw e; }
+  },
+  pagar(p){
+    const r=one(bd,'SELECT r.*, v.SalidaProgramada, ru.DistanciaMillas FROM Reserva r JOIN Vuelo v ON v.IdVuelo=r.IdVuelo JOIN Ruta ru ON ru.IdRuta=v.IdRuta WHERE r.IdReserva = ?',[p.rid],'GestorPagos');
+    const mes=parse(r.SalidaProgramada).getMonth(), unit=Math.round(precioBase(r.DistanciaMillas,mes)*CLASE_F[p.clase]*100)/100, sub=unit*p.ids.length, imp=Math.round(sub*0.075*100)/100, tot=Math.round((sub+imp)*100)/100;
+    bd.run('BEGIN');
+    try{
+      const fa=nextId('Factura'); insert(bd,'Factura',{IdFactura:fa,NumeroFactura:'FE-'+pad(seq.Factura,8),FechaEmision:nowS(),Subtotal:sub,Impuestos:imp,Total:tot,IdReserva:p.rid},'GestorFacturacion');
+      const pg=nextId('Pago'), ref='PSX-'+Math.floor(10000000+Math.random()*89999999);
+      insert(bd,'Pago',{IdPago:pg,FechaPago:nowS(),Valor:tot,MedioPago:p.medio,Estado:'Aprobado',Referencia:ref,IdFactura:fa},'GestorPagos');
+      const tqs = p.ids.map(c=>{ const tq=nextId('Tiquete'); insert(bd,'Tiquete',{IdTiquete:tq,NumeroTiquete:'777'+Math.floor(1000000000+Math.random()*8999999999),FechaEmision:nowS(),Clase:p.clase,Asiento:null,Valor:unit,Estado:'Emitido',IdReserva:p.rid,IdCliente:c},'GestorReservas'); return tq; });
+      update(bd,'Reserva',{Estado:'Confirmada'},{IdReserva:p.rid},'GestorReservas');
+      bd.run('COMMIT'); st.changes++;
+      log('Correo (simulado)','Confirmación de reserva y factura enviadas al pasajero','ext');
+      return {fa, pg, ref, tot, tqs};
+    }catch(e){ bd.run('ROLLBACK'); log('GestorPagos','Error: '+e.message,'err'); throw e; }
+  },
+  checkin(tq, asiento, maletas){
+    log('Interfaz','El pasajero hace check-in del tiquete '+tq,'ui');
+    const info=one(bd,`SELECT ao.IdAeropuerto ap FROM Tiquete t JOIN Reserva r ON r.IdReserva=t.IdReserva JOIN Vuelo v ON v.IdVuelo=r.IdVuelo JOIN Ruta ru ON ru.IdRuta=v.IdRuta JOIN Aeropuerto ao ON ao.IdAeropuerto=ru.IdAeropuertoOrigen WHERE t.IdTiquete = ?`,[tq],'GestorCheckin');
+    bd.run('BEGIN');
+    try{
+      update(bd,'Tiquete',{Asiento:asiento},{IdTiquete:tq},'GestorCheckin');
+      insert(bd,'Checkin',{IdCheckin:nextId('Checkin'),FechaHora:nowS(),Canal:'Web',PuertaEmbarque:null,FechaEmbarque:null,IdTiquete:tq},'GestorCheckin');
+      const tags=[];
+      maletas.forEach(kg=>{ const ej=nextId('Equipaje'), tag='BA'+Math.floor(10000000+Math.random()*89999999); tags.push(tag);
+        insert(bd,'Equipaje',{IdEquipaje:ej,CodigoEtiqueta:tag,PesoKg:kg,Estado:'Documentada',IdTiquete:tq},'GestorEquipaje');
+        insert(bd,'RastreoEquipaje',{IdRastreo:nextId('RastreoEquipaje'),FechaHora:nowS(),PuntoControl:'Documentada en web',Estado:'En tránsito',IdEquipaje:ej,IdAeropuerto:info.ap},'GestorEquipaje'); });
+      bd.run('COMMIT'); st.changes++; return tags;
+    }catch(e){ bd.run('ROLLBACK'); log('GestorCheckin','Error: '+e.message,'err'); throw e; }
+  },
+  afiliar(){
+    const id=nextId('CuentaMillas'); insert(bd,'CuentaMillas',{IdCuentaMillas:id,NumeroSocio:'BA'+Math.floor(100000000+Math.random()*899999999),Nivel:'Azul',SaldoMillas:0,FechaAfiliacion:dstr(new Date()),IdCliente:st.user},'GestorMillas'); st.changes++;
+  },
+  caso(tipo, desc){
+    insert(bd,'CasoServicio',{IdCaso:nextId('CasoServicio'),FechaApertura:nowS(),FechaCierre:null,Tipo:tipo,Canal:'Web',Descripcion:desc,Estado:'Abierto',IdCliente:st.user,IdEmpleado:null},'GestorServicio'); st.changes++;
+  },
+  avanzar(idVuelo){
+    const v=G.vuelosInfo('WHERE v.IdVuelo = ?',[idVuelo])[0];
+    const hechas=all(bd,'SELECT TipoEvento FROM EventoVuelo WHERE IdVuelo = ?',[idVuelo]).map(r=>r.TipoEvento);
+    const k=ETAPAS.findIndex(e=>!hechas.includes(e)); if(k<0) return;
+    const et=ETAPAS[k];
+    log('Interfaz',`Operaciones registra la etapa "${et}" del vuelo ${v.NumeroVuelo}`,'ui');
+    log('GestorOperaciones',`Etapa ${k+1} de 8 del pipeline operacional: ${ETAPA_EN[k]}`);
+    const emp=a=>all(bd,`SELECT e.IdEmpleado FROM Empleado e WHERE e.Cargo LIKE ? ORDER BY RANDOM() LIMIT 1`,[a])[0]?.IdEmpleado;
+    const disp=emp('%Despachador%')||emp('%Coordinador%');
+    const pax = () => all(bd,`SELECT t.IdTiquete, t.IdCliente, c.IdCheckin, c.FechaEmbarque FROM Tiquete t JOIN Reserva r ON r.IdReserva=t.IdReserva LEFT JOIN Checkin c ON c.IdTiquete=t.IdTiquete WHERE r.IdVuelo = ? AND t.Estado <> 'Anulado'`,[idVuelo],'GestorOperaciones');
+    const maletas = () => all(bd,`SELECT e.IdEquipaje FROM Equipaje e JOIN Tiquete t ON t.IdTiquete=e.IdTiquete JOIN Reserva r ON r.IdReserva=t.IdReserva WHERE r.IdVuelo = ?`,[idVuelo],'GestorEquipaje');
+    const ap = cod => one(bd,'SELECT IdAeropuerto FROM Aeropuerto WHERE CodigoIATA = ?',[cod]).IdAeropuerto;
+    let desc = ETAPA_EN[k]+' completado';
+    bd.run('BEGIN');
+    try{
+      if(k===0){
+        const crew=[...all(bd,`SELECT IdEmpleado, Cargo FROM Empleado WHERE Cargo = 'Capitán' ORDER BY RANDOM() LIMIT 1`), ...all(bd,`SELECT IdEmpleado, Cargo FROM Empleado WHERE Cargo = 'Primer oficial' ORDER BY RANDOM() LIMIT 1`), ...all(bd,`SELECT IdEmpleado, Cargo FROM Empleado WHERE Cargo = 'Auxiliar de vuelo' ORDER BY RANDOM() LIMIT 2`)];
+        crew.forEach(c=> insert(bd,'AsignacionTripulacion',{IdAsignacion:nextId('AsignacionTripulacion'),Rol:c.Cargo,IdVuelo:idVuelo,IdEmpleado:c.IdEmpleado},'GestorOperaciones'));
+        const gate=pick(['A','B','C','D','E'])+Math.floor(1+Math.random()*30);
+        update(bd,'Vuelo',{Puerta:gate,Estado:ESTADO_TRAS[0]},{IdVuelo:idVuelo},'GestorOperaciones');
+        desc=`Tripulación de ${crew.length} personas y puerta ${gate} asignadas`;
+      } else if(k===1){ update(bd,'Vuelo',{Estado:ESTADO_TRAS[1]},{IdVuelo:idVuelo},'GestorOperaciones'); desc='Aeronave inspeccionada y combustible cargado'; }
+      else if(k===2){
+        const p=pax(); let emb=0;
+        p.filter(x=>x.IdCheckin && !x.FechaEmbarque).forEach(x=>{ update(bd,'Checkin',{FechaEmbarque:nowS(),PuertaEmbarque:v.Puerta},{IdCheckin:x.IdCheckin},'GestorEmbarque'); update(bd,'Tiquete',{Estado:'Abordado'},{IdTiquete:x.IdTiquete},'GestorEmbarque'); emb++; });
+        const m=maletas(); m.forEach(x=>{ insert(bd,'RastreoEquipaje',{IdRastreo:nextId('RastreoEquipaje'),FechaHora:nowS(),PuntoControl:'Cargada en bodega',Estado:'En tránsito',IdEquipaje:x.IdEquipaje,IdAeropuerto:ap(v.o)},'GestorEquipaje'); update(bd,'Equipaje',{Estado:'En bodega'},{IdEquipaje:x.IdEquipaje},'GestorEquipaje'); });
+        update(bd,'Vuelo',{Estado:ESTADO_TRAS[2]},{IdVuelo:idVuelo},'GestorOperaciones');
+        desc=`${emb} pasajero(s) abordaron y ${m.length} maleta(s) cargadas`;
+      } else if(k===3){ update(bd,'Vuelo',{SalidaReal:nowS(),Estado:ESTADO_TRAS[3]},{IdVuelo:idVuelo},'GestorOperaciones'); desc='Puertas cerradas y despegue'; }
+      else if(k===4){ desc='Altitud de crucero, sin novedades'; }
+      else if(k===5){
+        update(bd,'Vuelo',{LlegadaReal:nowS(),Estado:ESTADO_TRAS[5]},{IdVuelo:idVuelo},'GestorOperaciones');
+        const p=pax().filter(x=>x.FechaEmbarque); let acum=0;
+        p.forEach(x=>{ update(bd,'Tiquete',{Estado:'Volado'},{IdTiquete:x.IdTiquete},'GestorOperaciones');
+          const cm=one(bd,'SELECT IdCuentaMillas, SaldoMillas FROM CuentaMillas WHERE IdCliente = ?',[x.IdCliente],'GestorMillas');
+          if(cm){ insert(bd,'MovimientoMillas',{IdMovimiento:nextId('MovimientoMillas'),Fecha:nowS(),Tipo:'Acumulacion',Millas:v.DistanciaMillas,IdCuentaMillas:cm.IdCuentaMillas,IdTiquete:x.IdTiquete},'GestorMillas');
+            update(bd,'CuentaMillas',{SaldoMillas:cm.SaldoMillas+v.DistanciaMillas,Nivel:nivelPor(cm.SaldoMillas+v.DistanciaMillas)},{IdCuentaMillas:cm.IdCuentaMillas},'GestorMillas'); acum++; } });
+        exec(bd,`UPDATE Reserva SET Estado = 'Completada' WHERE IdVuelo = ? AND Estado = 'Confirmada'`,[idVuelo],'GestorReservas');
+        desc=`Aterrizaje. ${acum} pasajero(s) acumularon ${num(v.DistanciaMillas)} millas`;
+      } else if(k===6){
+        const m=maletas(); m.forEach(x=>{ ['Descargada','Lista en banda de entrega'].forEach(pc=> insert(bd,'RastreoEquipaje',{IdRastreo:nextId('RastreoEquipaje'),FechaHora:nowS(),PuntoControl:pc,Estado:pc.startsWith('Lista')?'En banda':'En tránsito',IdEquipaje:x.IdEquipaje,IdAeropuerto:ap(v.d)},'GestorEquipaje'));
+          update(bd,'Equipaje',{Estado:'En banda'},{IdEquipaje:x.IdEquipaje},'GestorEquipaje'); });
+        update(bd,'Vuelo',{Estado:ESTADO_TRAS[6]},{IdVuelo:idVuelo},'GestorOperaciones'); desc=`${m.length} maleta(s) descargadas y en banda`;
+      } else if(k===7){
+        insert(bd,'Mantenimiento',{IdMantenimiento:nextId('Mantenimiento'),FechaInicio:nowS(),FechaFin:dtstr(addMin(new Date(),40)),Tipo:'Servicio de rutina',Descripcion:'Limpieza de cabina y revisión post-vuelo',Estado:'Completado',IdAeronave:v.IdAeronave,IdEmpleado:emp('%Técnico%')},'GestorMantenimiento');
+        update(bd,'Vuelo',{Estado:ESTADO_TRAS[7]},{IdVuelo:idVuelo},'GestorOperaciones'); desc='Cabina limpia y aeronave alistada';
+      }
+      insert(bd,'EventoVuelo',{IdEvento:nextId('EventoVuelo'),TipoEvento:et,FechaHora:nowS(),Descripcion:desc,IdVuelo:idVuelo,IdEmpleado:disp},'GestorOperaciones');
+      bd.run('COMMIT'); st.changes++;
+      log('Bus de eventos',`Evento publicado: ${et} · vuelo ${v.NumeroVuelo}`,'ext');
+      return desc;
+    }catch(e){ bd.run('ROLLBACK'); log('GestorOperaciones','Error: '+e.message,'err'); throw e; }
+  },
+  atenderCaso(id, cerrar){
+    const ag=all(bd,`SELECT IdEmpleado FROM Empleado WHERE Cargo LIKE '%servicio al cliente%' ORDER BY RANDOM() LIMIT 1`)[0].IdEmpleado;
+    if(cerrar) update(bd,'CasoServicio',{Estado:'Cerrado',FechaCierre:nowS()},{IdCaso:id},'GestorServicio');
+    else update(bd,'CasoServicio',{Estado:'En atención',IdEmpleado:ag},{IdCaso:id},'GestorServicio');
+    st.changes++;
+  }
+};
+
+/* ---------------- ETL: BD operacional → data warehouse ---------------- */
+function ejecutarETL(){
+  log('ETL','Inicio de la carga del data warehouse','etl');
+  const t0=performance.now();
+  dw.run('BEGIN');
+  ['FactVentaTiquetes','FactReservas','FactMillasPasajero','DimTiempo','DimCiudad','DimCliente','DimCanal','DimRuta'].forEach(t=>exec(dw,`DELETE FROM ${t}`,[],'ETL'));
+  // DimTiempo: calendario completo del periodo
+  const rango=one(bd,`SELECT MIN(d) mn, MAX(d) mx FROM (SELECT date(FechaReserva) d FROM Reserva UNION SELECT date(FechaEmision) FROM Tiquete UNION SELECT date(Fecha) FROM MovimientoMillas)`,[],'ETL');
+  const ins=(t,o)=>insert(dw,t,o);
+  let nT=0; for(let d=parse(rango.mn+' 00:00'); d<=parse(rango.mx+' 00:00'); d=addDays(d,1)){ ins('DimTiempo',{IdTiempo:+dstr(d).replace(/-/g,''),Fecha:dstr(d),Anio:d.getFullYear(),Trimestre:Math.floor(d.getMonth()/3)+1,Mes:d.getMonth()+1,NombreMes:MESES[d.getMonth()],Dia:d.getDate()}); nT++; }
+  log('ETL → DW',`INSERT INTO DimTiempo … (${nT} fechas del ${rango.mn} al ${rango.mx})`,'bd');
+  const ciudad={}; all(bd,'SELECT IdCiudad, Nombre, EstadoRegion, Pais FROM Ciudad ORDER BY IdCiudad',[],'ETL').forEach((c,i)=>{ ciudad[c.IdCiudad]=i+1; ins('DimCiudad',{IdCiudadDW:i+1,IdCiudad:c.IdCiudad,Ciudad:c.Nombre,EstadoRegion:c.EstadoRegion,Pais:c.Pais}); });
+  const cliente={}; all(bd,`SELECT c.IdCliente, c.Nombres || ' ' || c.Apellidos AS NombreCompleto, COALESCE(cm.Nivel,'Sin afiliar') AS NivelSocio, ci.Nombre AS CiudadResidencia
+    FROM Cliente c LEFT JOIN CuentaMillas cm ON cm.IdCliente = c.IdCliente JOIN Ciudad ci ON ci.IdCiudad = c.IdCiudad ORDER BY c.IdCliente`,[],'ETL').forEach((c,i)=>{ cliente[c.IdCliente]=i+1; ins('DimCliente',{IdClienteDW:i+1,...c}); });
+  const canal={}; all(bd,'SELECT DISTINCT Canal FROM Reserva ORDER BY Canal',[],'ETL').forEach((c,i)=>{ canal[c.Canal]=i+1; ins('DimCanal',{IdCanal:i+1,Canal:c.Canal}); });
+  const ruta={}; all(bd,`SELECT r.IdRuta, co.Nombre AS CiudadOrigen, cd.Nombre AS CiudadDestino, r.TipoRuta, r.DistanciaMillas FROM Ruta r
+    JOIN Aeropuerto ao ON ao.IdAeropuerto = r.IdAeropuertoOrigen JOIN Ciudad co ON co.IdCiudad = ao.IdCiudad
+    JOIN Aeropuerto ad ON ad.IdAeropuerto = r.IdAeropuertoDestino JOIN Ciudad cd ON cd.IdCiudad = ad.IdCiudad ORDER BY r.IdRuta`,[],'ETL').forEach((r,i)=>{ ruta[r.IdRuta]=i+1; ins('DimRuta',{IdRutaDW:i+1,...r}); });
+  const base=`JOIN Reserva r ON r.IdReserva = t.IdReserva JOIN Vuelo v ON v.IdVuelo = r.IdVuelo JOIN Ruta ru ON ru.IdRuta = v.IdRuta
+    JOIN Aeropuerto ao ON ao.IdAeropuerto = ru.IdAeropuertoOrigen JOIN Aeropuerto ad ON ad.IdAeropuerto = ru.IdAeropuertoDestino`;
+  const ventas=all(bd,`SELECT t.IdTiquete, date(t.FechaEmision) AS Fecha, ao.IdCiudad AS Origen, ad.IdCiudad AS Destino, t.IdCliente, r.Canal, t.Valor
+    FROM Tiquete t ${base} WHERE t.Estado <> 'Anulado'`,[],'ETL');
+  ventas.forEach((x,i)=> ins('FactVentaTiquetes',{IdVenta:i+1,IdTiempo:+x.Fecha.replace(/-/g,''),IdCiudadOrigen:ciudad[x.Origen],IdCiudadDestino:ciudad[x.Destino],IdClienteDW:cliente[x.IdCliente],IdCanal:canal[x.Canal],CantidadTiquetes:1,ValorVenta:x.Valor}));
+  log('ETL → DW',`INSERT INTO FactVentaTiquetes … (${ventas.length} filas)`,'bd');
+  const res=all(bd,`SELECT r.IdReserva, date(r.FechaReserva) AS Fecha, ao.IdCiudad AS Origen, ad.IdCiudad AS Destino, r.IdCliente, r.Canal, r.NumeroPasajeros
+    FROM Reserva r JOIN Vuelo v ON v.IdVuelo = r.IdVuelo JOIN Ruta ru ON ru.IdRuta = v.IdRuta
+    JOIN Aeropuerto ao ON ao.IdAeropuerto = ru.IdAeropuertoOrigen JOIN Aeropuerto ad ON ad.IdAeropuerto = ru.IdAeropuertoDestino`,[],'ETL');
+  res.forEach((x,i)=> ins('FactReservas',{IdReservaDW:i+1,IdTiempo:+x.Fecha.replace(/-/g,''),IdCiudadOrigen:ciudad[x.Origen],IdCiudadDestino:ciudad[x.Destino],IdClienteDW:cliente[x.IdCliente],IdCanal:canal[x.Canal],CantidadReservas:1,NumeroPasajeros:x.NumeroPasajeros}));
+  log('ETL → DW',`INSERT INTO FactReservas … (${res.length} filas)`,'bd');
+  const mil=all(bd,`SELECT date(m.Fecha) AS Fecha, cm.IdCliente, v.IdRuta, m.Millas FROM MovimientoMillas m
+    JOIN CuentaMillas cm ON cm.IdCuentaMillas = m.IdCuentaMillas JOIN Tiquete t ON t.IdTiquete = m.IdTiquete
+    JOIN Reserva r ON r.IdReserva = t.IdReserva JOIN Vuelo v ON v.IdVuelo = r.IdVuelo WHERE m.Tipo = 'Acumulacion'`,[],'ETL');
+  mil.forEach((x,i)=> ins('FactMillasPasajero',{IdMillas:i+1,IdTiempo:+x.Fecha.replace(/-/g,''),IdClienteDW:cliente[x.IdCliente],IdRutaDW:ruta[x.IdRuta],CantidadVuelos:1,MillasAcumuladas:x.Millas}));
+  log('ETL → DW',`INSERT INTO FactMillasPasajero … (${mil.length} filas)`,'bd');
+  dw.run('COMMIT');
+  st.etl={fecha:nowS(), ventas:ventas.length, reservas:res.length, millas:mil.length, ms:Math.round(performance.now()-t0)}; st.changes=0;
+  log('ETL',`Carga terminada en ${st.etl.ms} ms`,'etl');
+}
+
+/* ---------------- consultas del data warehouse (requerimientos 4a, 4b, 4c) ---------------- */
+const Q = {
+  a: c => `SELECT t.Anio, t.Mes, ci.Ciudad,
+       SUM(f.ValorVenta) AS Ingresos, SUM(f.CantidadTiquetes) AS Tiquetes
+FROM FactVentaTiquetes f
+JOIN DimTiempo t  ON t.IdTiempo    = f.IdTiempo
+JOIN DimCiudad ci ON ci.IdCiudadDW = f.IdCiudad${c==='destino'?'Destino':'Origen'}
+WHERE t.Anio = ?
+GROUP BY t.Anio, t.Mes, ci.Ciudad
+ORDER BY t.Mes, Ingresos DESC`,
+  b: c => `SELECT t.Anio, t.Mes, ci.Ciudad,
+       SUM(f.CantidadReservas) AS Reservas, SUM(f.NumeroPasajeros) AS Pasajeros
+FROM FactReservas f
+JOIN DimTiempo t  ON t.IdTiempo    = f.IdTiempo
+JOIN DimCiudad ci ON ci.IdCiudadDW = f.IdCiudad${c==='destino'?'Destino':'Origen'}
+WHERE t.Anio = ?
+GROUP BY t.Anio, t.Mes, ci.Ciudad
+ORDER BY t.Mes, Reservas DESC`,
+  c: () => `SELECT t.Mes, cl.NombreCompleto, cl.NivelSocio,
+       SUM(f.MillasAcumuladas) AS Millas, SUM(f.CantidadVuelos) AS Vuelos
+FROM FactMillasPasajero f
+JOIN DimTiempo  t  ON t.IdTiempo     = f.IdTiempo
+JOIN DimCliente cl ON cl.IdClienteDW = f.IdClienteDW
+JOIN DimRuta    r  ON r.IdRutaDW     = f.IdRutaDW
+WHERE r.TipoRuta = 'Nacional' AND t.Anio = ?
+GROUP BY t.Mes, cl.NombreCompleto, cl.NivelSocio`
+};
+
+/* ---------------- presentación ---------------- */
+const LOGO=`<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 18.5 29 9.5l-3.2 5.6L14 19.6l-4.8 7.2-2.4-.6 2.1-6.1-4.5 1.2z" fill="currentColor"/><path d="M3 24.5h26" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".45"/></svg>`;
+const AREAS=[['inicio','Inicio'],['pas','Pasajeros'],['ops','Operaciones'],['ana','Analítica (DW)'],['db','Base de datos']];
+function render(){
+  const a=st.area;
+  const body = a==='pas'? vPas() : a==='ops'? vOps() : a==='ana'? vAna() : a==='db'? vDB() : vInicio();
+  document.getElementById('app').innerHTML = `
+  <header class="top wrapx"><div class="inner">
+    <button class="brand" data-act="area" data-v="inicio">${LOGO}<div><b>BETA AIRLINES</b><span>Prototipo del sistema de información</span></div></button>
+    <nav class="nav" aria-label="Áreas">${AREAS.slice(1).map(([k,l])=>`<button data-act="area" data-v="${k}" ${a===k?'aria-current="page"':''}>${l}</button>`).join('')}</nav>
+    <button class="logbtn" data-act="log"><span class="dot"></span><span class="lbl">Registro del sistema</span><span class="count">${st.unseen}</span></button>
+  </div></header>
+  <main class="inner wrapx">${body}</main>`;
+  renderLog(); saveSoon();
+}
+function renderLog(){
+  const el=document.getElementById('log'); el.hidden=!st.logOpen; if(!st.logOpen) return;
+  el.innerHTML=`<div class="lh"><h3>Registro del sistema</h3><span class="muted" style="font-size:13px">Cada acción muestra el componente que actúa y el SQL que se ejecuta en la base de datos.</span>
+    <button class="btn quiet sm" data-act="logclear">Limpiar</button><button class="btn sm" data-act="log">Cerrar</button></div>
+    <div class="lb">${st.log.length? st.log.map(e=>`<div class="le"><time>${h(e.t)}</time><div><div class="c k-${e.kind}">${h(e.comp)}</div>${e.kind==='bd'?`<code>${h(e.msg)}</code>`:h(e.msg)}</div></div>`).join('') : '<p class="muted" style="padding:16px">Aún no hay actividad. Haz una reserva o avanza un vuelo y aquí verás cada paso.</p>'}</div>`;
+}
+const pill = e => { const m={'Confirmada':'ok','Completada':'ok','Aprobado':'ok','Volado':'ok','Finalizado':'ok','Cerrado':'ok','Entregada':'ok','En banda':'ok','Emitido':'','Abordado':'','Pendiente de pago':'warn','Abierto':'warn','En atención':'','Cancelada':'bad','Anulado':'bad','Programado':'gray'}; return `<span class="pill ${m[e]??''}">${h(e)}</span>`; };
+const SIM='<span class="sim">Simulado</span>';
+
+function vInicio(){
+  const c=k=>one(bd,`SELECT COUNT(*) n FROM ${k}`).n;
+  return `<section class="head"><div><h2>Sistema de información de Beta Airlines</h2>
+    <p>Prototipo funcional de extremo a extremo: lo que hagas en la interfaz pasa por la lógica de negocio y queda guardado en una base de datos SQL real, creada con los scripts que generamos en Enterprise Architect. Después, un proceso ETL lleva esos datos al data warehouse, que responde los requerimientos 4a, 4b y 4c.</p></div></section>
+  <section class="arch" aria-label="Arquitectura del prototipo">
+    <div class="layer"><div><h4>Presentación</h4><p class="muted" style="font-size:13px">Interfaz web</p></div><div class="chips"><span class="chip">Portal de pasajeros (Skylinks)</span><span class="chip">Tablero de operaciones</span><span class="chip">Analítica del DW</span><span class="chip">Explorador de la base de datos</span></div></div>
+    <div class="arrow">llama a ↓</div>
+    <div class="layer"><div><h4>Lógica de negocio</h4><p class="muted" style="font-size:13px">Gestores</p></div><div class="chips"><span class="chip">GestorReservas</span><span class="chip">GestorPagos</span><span class="chip">GestorFacturacion</span><span class="chip">GestorCheckin</span><span class="chip">GestorEquipaje</span><span class="chip">GestorEmbarque</span><span class="chip">GestorMillas</span><span class="chip">GestorOperaciones</span><span class="chip">GestorMantenimiento</span><span class="chip">GestorServicio</span><span class="chip ext">Pasarela de pagos (simulada)</span><span class="chip ext">Correo (simulado)</span><span class="chip ext">Bus de eventos</span></div></div>
+    <div class="arrow">lee y escribe con SQL ↓</div>
+    <div class="layer"><div><h4>Persistencia</h4><p class="muted" style="font-size:13px">Motor SQL embebido</p></div><div class="stack" style="gap:8px">
+      <div class="chips"><span class="chip"><b>BD operacional</b> · 22 tablas de TablesBD.sql</span><span class="chip">→ ETL →</span><span class="chip"><b>Data warehouse</b> · 8 tablas de TablesDW.sql</span></div>
+      <p class="hint">Hoy la BD tiene ${num(c('Vuelo'))} vuelos, ${num(c('Reserva'))} reservas, ${num(c('Tiquete'))} tiquetes y ${num(c('Equipaje'))} maletas. En producción, la BD operacional iría en MySQL y el data warehouse en Snowflake; aquí ambas corren en el navegador con SQLite para que el prototipo funcione sin servidor.</p></div></div>
+  </section>
+  <section class="grid3">
+    <div class="panel stack"><h3>Experiencia del cliente</h3><p class="muted">Busca un vuelo, reserva, paga, haz check-in con maletas y sigue tu equipaje y tus millas.</p><div><button class="btn" data-act="area" data-v="pas">Entrar como pasajero</button></div></div>
+    <div class="panel stack"><h3>Pipeline operacional</h3><p class="muted">Lleva un vuelo por sus 8 etapas, desde asignar recursos hasta limpiar la aeronave.</p><div><button class="btn" data-act="area" data-v="ops">Abrir operaciones</button></div></div>
+    <div class="panel stack"><h3>Data warehouse</h3><p class="muted">Ejecuta el ETL y consulta ingresos, reservas y millas por mes y ciudad.</p><div><button class="btn" data-act="area" data-v="ana">Ver analítica</button></div></div>
+  </section>
+  <section class="panel stack"><h3>Qué está simulado</h3><p class="muted">El inicio de sesión (se elige el pasajero de una lista), la pasarela de pagos (aprueba todo salvo tarjetas terminadas en 0000), el envío de correos y el paso del tiempo en operaciones, que se avanza con un botón. Los datos de ejemplo se generaron al abrir la página y se guardan en este navegador. <button class="link" data-act="reset">Reiniciar datos</button></p></section>`;
+}
+
+/* ---- pasajeros ---- */
+function vPas(){
+  const users=all(bd,`SELECT c.IdCliente, c.Nombres || ' ' || c.Apellidos n, c.Documento FROM Cliente c ORDER BY c.IdCliente LIMIT 60`);
+  if(!st.user) st.user=users[0].IdCliente;
+  const u=one(bd,'SELECT c.*, ci.Nombre ciudad FROM Cliente c JOIN Ciudad ci ON ci.IdCiudad=c.IdCiudad WHERE IdCliente = ?',[st.user]);
+  const s=st.sub.pas;
+  const tabs=[['buscar','Buscar vuelos'],['viajes','Mis viajes'],['maletas','Mis maletas'],['millas','Millas'],['ayuda','Ayuda']];
+  const body = s==='viajes'? pViajes() : s==='maletas'? pMaletas() : s==='millas'? pMillas(u) : s==='ayuda'? pAyuda() : s==='pago'? pPago() : pBuscar();
+  return `<section class="head"><div><h2>Portal de pasajeros</h2><p>El pipeline de experiencia del cliente: reservas, pagos, check-in, equipaje, millas y servicio al cliente.</p></div>
+    <div style="min-width:min(100%,280px)"><label for="user">Sesión iniciada como ${SIM}</label><select id="user" data-change="user">${users.map(x=>`<option value="${x.IdCliente}" ${x.IdCliente===st.user?'selected':''}>${h(x.n)} · ${x.Documento}</option>`).join('')}</select></div></section>
+  <nav class="tabs" aria-label="Portal">${tabs.map(([k,l])=>`<button data-act="sub" data-a="pas" data-v="${k}" aria-current="${s===k||(s==='pago'&&k==='viajes')}">${l}</button>`).join('')}</nav>
+  ${body}`;
+}
+function ciudadesOpts(sel){ return all(bd,`SELECT a.CodigoIATA c, ci.Nombre n FROM Aeropuerto a JOIN Ciudad ci ON ci.IdCiudad=a.IdCiudad ORDER BY ci.Nombre`).map(x=>`<option value="${x.c}" ${x.c===sel?'selected':''}>${h(x.n)} (${x.c})</option>`).join(''); }
+function pBuscar(){
+  const s=st.search || (st.search={o:'ATL',d:'JFK',f:dstr(addDays(new Date(),1)),pax:1,clase:'Económica',res:null});
+  let res='';
+  if(s.res){
+    const r=all(bd,`SELECT DistanciaMillas FROM Ruta r JOIN Aeropuerto a ON a.IdAeropuerto=r.IdAeropuertoOrigen JOIN Aeropuerto b ON b.IdAeropuerto=r.IdAeropuertoDestino WHERE a.CodigoIATA=? AND b.CodigoIATA=?`,[s.o,s.d])[0];
+    if(!r) res=`<div class="alert info">Beta Airlines no tiene ruta directa entre esas ciudades. Prueba con Atlanta (ATL), nuestro hub.</div>`;
+    else if(!s.res.length){ const next=all(bd,`SELECT DISTINCT date(v.SalidaProgramada) d FROM Vuelo v JOIN Ruta r ON r.IdRuta=v.IdRuta JOIN Aeropuerto a ON a.IdAeropuerto=r.IdAeropuertoOrigen JOIN Aeropuerto b ON b.IdAeropuerto=r.IdAeropuertoDestino WHERE a.CodigoIATA=? AND b.CodigoIATA=? AND v.Estado='Programado' ORDER BY d LIMIT 4`,[s.o,s.d]);
+      res=`<div class="alert info">No hay vuelos programados ese día. Fechas con vuelos: ${next.map(n=>`<button class="link" data-act="fecha" data-v="${n.d}">${fDate(n.d+' 00:00')}</button>`).join(', ')||'ninguna'}.</div>`; }
+    else res=`<div class="stack">${s.res.map(v=>{ const p=Math.round(precioBase(v.DistanciaMillas,parse(v.SalidaProgramada).getMonth())*CLASE_F[s.clase]);
+      return `<article class="fcard"><div class="times"><div><div class="t">${fTime(v.SalidaProgramada)}</div><div class="code">${s.o}</div></div><div class="line"></div><div><div class="t">${fTime(v.LlegadaProgramada)}</div><div class="code">${s.d}</div></div></div>
+        <div><b>${v.NumeroVuelo}</b> · ${h(v.Modelo)}<div class="muted" style="font-size:13px">${num(v.DistanciaMillas)} millas · ${v.TipoRuta} · ${v.Disponibles} sillas libres</div></div>
+        <div class="price"><b class="num">${money(p)}</b><div class="muted" style="font-size:12.5px">por persona, ${s.clase.toLowerCase()}</div><button class="btn sm" style="margin-top:6px" data-act="elegir" data-v="${v.IdVuelo}" ${v.Disponibles<s.pax?'disabled':''}>Reservar</button></div></article>`; }).join('')}</div>`;
+  }
+  return `<section class="panel"><form class="fields" data-form="buscar">
+    <div><label for="o">Origen</label><select id="o" name="o">${ciudadesOpts(s.o)}</select></div>
+    <div><label for="d">Destino</label><select id="d" name="d">${ciudadesOpts(s.d)}</select></div>
+    <div><label for="f">Fecha</label><input id="f" name="f" type="date" value="${s.f}" min="${dstr(new Date())}"></div>
+    <div><label for="pax">Pasajeros</label><select id="pax" name="pax">${[1,2,3,4].map(n=>`<option ${n==s.pax?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div><label for="clase">Clase</label><select id="clase" name="clase">${Object.keys(CLASE_F).map(c=>`<option ${c===s.clase?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div style="display:flex;align-items:flex-end"><button class="btn" type="submit" style="width:100%">Buscar vuelos</button></div></form></section>
+  ${res}`;
+}
+function pPago(){
+  const p=st.pendingRes; if(!p) { st.sub.pas='viajes'; return pViajes(); }
+  const r=G.vuelosInfo('WHERE v.IdVuelo = ?',[p.vuelo])[0];
+  const unit=Math.round(precioBase(r.DistanciaMillas,parse(r.SalidaProgramada).getMonth())*CLASE_F[p.clase]*100)/100, sub=unit*p.ids.length, imp=Math.round(sub*0.075*100)/100;
+  if(st.pay?.done) return `<section class="panel stack"><div class="alert ok">Pago aprobado. Tu reserva <b class="mono">${p.cod}</b> está confirmada.</div>
+    <p>Pago <span class="mono">${st.pay.pg}</span> por <b>${USD2.format(st.pay.tot)}</b>, referencia de la pasarela <span class="mono">${st.pay.ref}</span>. Se emitieron ${st.pay.tqs.length} tiquete(s) y la factura <span class="mono">${st.pay.fa}</span>.</p>
+    <div class="row"><button class="btn" data-act="sub" data-a="pas" data-v="viajes">Ir a mis viajes y hacer check-in</button></div></section>`;
+  return `<section class="grid2">
+   <form class="panel stack" data-form="pagar"><div class="spread"><h3>Pago en línea</h3>${SIM}</div>
+    ${st.pay?.err?`<div class="alert bad">${h(st.pay.err)}</div>`:''}
+    <div class="fields"><div class="full"><label for="tarjeta">Número de tarjeta</label><input id="tarjeta" name="tarjeta" inputmode="numeric" placeholder="4111 1111 1111 1111" required><p class="hint">Una tarjeta que termine en 0000 simula un rechazo del banco.</p></div>
+    <div><label for="titular">Titular</label><input id="titular" name="titular" required></div><div><label for="medio">Tipo</label><select id="medio" name="medio"><option>Tarjeta de crédito</option><option>Tarjeta débito</option></select></div></div>
+    <div class="row"><button class="btn" type="submit">Pagar ${USD2.format(sub+imp)}</button><button class="btn quiet" type="button" data-act="sub" data-a="pas" data-v="viajes">Pagar después</button></div></form>
+   <div class="panel stack"><h3>Resumen de la reserva <span class="mono">${p.cod}</span></h3>
+    <p><b>${r.NumeroVuelo}</b> ${h(r.co)} (${r.o}) → ${h(r.cd)} (${r.d})<br><span class="muted">${fDT(r.SalidaProgramada)} · ${h(r.Modelo)}</span></p>
+    <div class="tbl"><table><tbody><tr><td>${p.ids.length} × ${p.clase}</td><td class="r num">${USD2.format(sub)}</td></tr><tr><td>Impuestos (7.5%)</td><td class="r num">${USD2.format(imp)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${USD2.format(sub+imp)}</b></td></tr></tbody></table></div></div></section>`;
+}
+function pViajes(){
+  const rs=all(bd,`SELECT r.*, v.NumeroVuelo, v.SalidaProgramada, v.Estado ev, v.Puerta, ao.CodigoIATA o, ad.CodigoIATA d, co.Nombre co, cd.Nombre cd FROM Reserva r JOIN Vuelo v ON v.IdVuelo=r.IdVuelo JOIN Ruta ru ON ru.IdRuta=v.IdRuta
+     JOIN Aeropuerto ao ON ao.IdAeropuerto=ru.IdAeropuertoOrigen JOIN Aeropuerto ad ON ad.IdAeropuerto=ru.IdAeropuertoDestino JOIN Ciudad co ON co.IdCiudad=ao.IdCiudad JOIN Ciudad cd ON cd.IdCiudad=ad.IdCiudad
+     WHERE r.IdCliente = ? ORDER BY v.SalidaProgramada DESC`,[st.user]);
+  if(!rs.length) return `<section class="panel stack"><p class="muted">Todavía no tienes reservas.</p><div><button class="btn" data-act="sub" data-a="pas" data-v="buscar">Buscar vuelos</button></div></section>`;
+  const prox=rs.filter(r=>r.ev!=='Finalizado' && r.Estado!=='Cancelada'), hist=rs.filter(r=>!(r.ev!=='Finalizado' && r.Estado!=='Cancelada'));
+  const card=r=>{ const tqs=all(bd,`SELECT t.*, c.Nombres || ' ' || c.Apellidos n, k.IdCheckin, k.FechaEmbarque FROM Tiquete t JOIN Cliente c ON c.IdCliente=t.IdCliente LEFT JOIN Checkin k ON k.IdTiquete=t.IdTiquete WHERE t.IdReserva = ?`,[r.IdReserva]);
+    const salio=['En vuelo','Aterrizado','Descargando','Finalizado'].includes(r.ev);
+    return `<article class="panel stack"><div class="spread"><div><h3>${h(r.co)} → ${h(r.cd)}</h3><p class="muted">${r.NumeroVuelo} · ${fDT(r.SalidaProgramada)} · reserva <span class="mono">${r.CodigoReserva}</span></p></div><div class="row">${pill(r.Estado)}<span class="pill gray">Vuelo: ${h(r.ev)}${r.Puerta?' · puerta '+r.Puerta:''}</span></div></div>
+     ${r.Estado==='Pendiente de pago'?`<div class="row"><button class="btn sm" data-act="retomarPago" data-v="${r.IdReserva}">Pagar ahora</button></div>`:''}
+     ${tqs.length?`<div class="tbl"><table><thead><tr><th>Pasajero</th><th>Tiquete</th><th>Clase</th><th>Silla</th><th>Estado</th><th></th></tr></thead><tbody>${tqs.map(t=>`<tr><td>${h(t.n)}</td><td class="mono">${t.NumeroTiquete}</td><td>${t.Clase}</td><td>${t.Asiento||'—'}</td><td>${pill(t.Estado)}</td>
+      <td class="r">${t.IdCheckin? `<button class="btn ghost sm" data-act="pase" data-v="${t.IdTiquete}">Pase de abordar</button>` : (!salio && r.Estado==='Confirmada'? `<button class="btn sm" data-act="checkin" data-v="${t.IdTiquete}">Hacer check-in</button>`:'')}</td></tr>`).join('')}</tbody></table></div>`:''}</article>`; };
+  return `${prox.length?`<section class="stack"><h3>Próximos viajes</h3>${prox.map(card).join('')}</section>`:''}
+  ${hist.length?`<section class="stack"><h3>Viajes anteriores</h3><div class="tbl"><table><thead><tr><th>Fecha</th><th>Vuelo</th><th>Ruta</th><th>Reserva</th><th>Estado</th></tr></thead><tbody>${hist.map(r=>`<tr><td>${fDateY(r.SalidaProgramada)}</td><td>${r.NumeroVuelo}</td><td>${r.o} → ${r.d}</td><td class="mono">${r.CodigoReserva}</td><td>${pill(r.Estado)}</td></tr>`).join('')}</tbody></table></div></section>`:''}`;
+}
+function pMaletas(){
+  const ms=all(bd,`SELECT e.*, (SELECT PuntoControl || ' · ' || a.CodigoIATA FROM RastreoEquipaje re JOIN Aeropuerto a ON a.IdAeropuerto=re.IdAeropuerto WHERE re.IdEquipaje=e.IdEquipaje ORDER BY re.FechaHora DESC, re.IdRastreo DESC LIMIT 1) ultimo,
+     v.NumeroVuelo, v.SalidaProgramada FROM Equipaje e JOIN Tiquete t ON t.IdTiquete=e.IdTiquete JOIN Reserva r ON r.IdReserva=t.IdReserva JOIN Vuelo v ON v.IdVuelo=r.IdVuelo WHERE t.IdCliente = ? ORDER BY v.SalidaProgramada DESC LIMIT 20`,[st.user]);
+  return `<section class="grid2"><div class="panel stack"><h3>Rastrear una maleta</h3><form class="row" data-form="rastrear"><input name="tag" id="tag" placeholder="Etiqueta, por ejemplo BA12345678" style="flex:1;min-width:180px" required><button class="btn" type="submit">Rastrear</button></form>
+    <div id="rastreo"></div></div>
+    <div class="panel stack"><h3>Mis maletas</h3>${ms.length?`<div class="tbl"><table><thead><tr><th>Etiqueta</th><th>Vuelo</th><th>Último punto</th><th></th></tr></thead><tbody>${ms.map(m=>`<tr><td class="mono">${m.CodigoEtiqueta}</td><td>${m.NumeroVuelo}<div class="muted" style="font-size:12px">${fDate(m.SalidaProgramada)}</div></td><td>${h(m.ultimo||'—')}</td><td class="r"><button class="btn ghost sm" data-act="rastrear" data-v="${m.CodigoEtiqueta}">Ver</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">No tienes maletas registradas. Agrégalas al hacer check-in.</p>'}</div></section>`;
+}
+function rastreoHTML(tag){
+  const e=one(bd,'SELECT IdEquipaje, PesoKg, Estado FROM Equipaje WHERE CodigoEtiqueta = ?',[tag],'GestorEquipaje');
+  if(!e) return `<div class="alert bad">No encontramos la etiqueta ${h(tag)}. Revisa el código impreso en tu comprobante.</div>`;
+  const pts=all(bd,`SELECT re.FechaHora, re.PuntoControl, a.CodigoIATA, ci.Nombre FROM RastreoEquipaje re JOIN Aeropuerto a ON a.IdAeropuerto=re.IdAeropuerto JOIN Ciudad ci ON ci.IdCiudad=a.IdCiudad WHERE re.IdEquipaje = ? ORDER BY re.FechaHora, re.IdRastreo`,[e.IdEquipaje],'GestorEquipaje');
+  return `<p><b class="mono">${h(tag)}</b> · ${e.PesoKg} kg · ${pill(e.Estado)}</p><ol class="timeline">${pts.map(p=>`<li><div><b>${h(p.PuntoControl)}</b><div class="muted" style="font-size:13px">${h(p.Nombre)} (${p.CodigoIATA}) · ${fDT(p.FechaHora)}</div></div></li>`).join('')}</ol>`;
+}
+function pMillas(u){
+  const cm=one(bd,'SELECT * FROM CuentaMillas WHERE IdCliente = ?',[st.user]);
+  if(!cm) return `<section class="panel stack"><h3>Skymiles</h3><p class="muted">${h(u.Nombres)}, aún no tienes cuenta de millas. Con ella acumulas una milla por cada milla volada.</p><div><button class="btn" data-act="afiliar">Afiliarme a Skymiles</button></div></section>`;
+  const mov=all(bd,`SELECT m.*, v.NumeroVuelo, ao.CodigoIATA o, ad.CodigoIATA d, ru.TipoRuta FROM MovimientoMillas m LEFT JOIN Tiquete t ON t.IdTiquete=m.IdTiquete LEFT JOIN Reserva r ON r.IdReserva=t.IdReserva LEFT JOIN Vuelo v ON v.IdVuelo=r.IdVuelo LEFT JOIN Ruta ru ON ru.IdRuta=v.IdRuta LEFT JOIN Aeropuerto ao ON ao.IdAeropuerto=ru.IdAeropuertoOrigen LEFT JOIN Aeropuerto ad ON ad.IdAeropuerto=ru.IdAeropuertoDestino WHERE m.IdCuentaMillas = ? ORDER BY m.Fecha DESC LIMIT 30`,[cm.IdCuentaMillas]);
+  const nac=mov.filter(m=>m.TipoRuta==='Nacional'&&m.Fecha.startsWith(String(new Date().getFullYear()))).reduce((s,m)=>s+m.Millas,0);
+  return `<section class="kpis"><div class="kpi"><b class="num">${num(cm.SaldoMillas)}</b><span>Saldo de millas</span></div><div class="kpi"><b>${h(cm.Nivel)}</b><span>Nivel${cm.Nivel==='Oro'||cm.Nivel==='Platino'?' · acceso a Crown Room':''}</span></div><div class="kpi"><b class="mono" style="font-size:18px">${cm.NumeroSocio}</b><span>Número de socio</span></div><div class="kpi"><b class="num">${num(nac)}</b><span>Millas nacionales este año (últimos 30 movimientos)</span></div></section>
+  <section class="stack"><h3>Movimientos</h3>${mov.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Vuelo</th><th>Ruta</th><th>Tipo de ruta</th><th class="r">Millas</th></tr></thead><tbody>${mov.map(m=>`<tr><td>${fDateY(m.Fecha)}</td><td>${m.NumeroVuelo||'—'}</td><td>${m.o?m.o+' → '+m.d:'—'}</td><td>${m.TipoRuta||'—'}</td><td class="r num">+${num(m.Millas)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Aún no tienes movimientos. Tus millas se acumulan cuando el vuelo aterriza.</p>'}</section>`;
+}
+function pAyuda(){
+  const cs=all(bd,'SELECT * FROM CasoServicio WHERE IdCliente = ? ORDER BY FechaApertura DESC',[st.user]);
+  return `<section class="grid2"><form class="panel stack" data-form="caso"><h3>Abrir una solicitud</h3>
+    <div><label for="tipo">Tipo</label><select id="tipo" name="tipo"><option>Equipaje demorado</option><option>Cambio de vuelo</option><option>Reembolso</option><option>Queja de servicio</option><option>Solicitud de asistencia</option></select></div>
+    <div><label for="desc">Descripción</label><textarea id="desc" name="desc" maxlength="200" required placeholder="Cuéntanos qué pasó"></textarea></div><div><button class="btn" type="submit">Enviar solicitud</button></div></form>
+   <div class="panel stack"><h3>Mis solicitudes</h3>${cs.length?`<div class="tbl"><table><thead><tr><th>Caso</th><th>Tipo</th><th>Abierto</th><th>Estado</th></tr></thead><tbody>${cs.map(c=>`<tr><td class="mono">${c.IdCaso}</td><td>${h(c.Tipo)}</td><td>${fDate(c.FechaApertura)}</td><td>${pill(c.Estado)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">No tienes solicitudes abiertas.</p>'}</div></section>`;
+}
+
+/* ---- operaciones ---- */
+function vOps(){
+  const s=st.sub.ops, abiertos=one(bd,`SELECT COUNT(*) n FROM CasoServicio WHERE Estado <> 'Cerrado'`).n;
+  const tabs=[['tablero','Vuelos'],['casos','Servicio al cliente'],['mant','Mantenimiento y flota']];
+  const body= s==='casos'? oCasos() : s==='mant'? oMant() : oTablero();
+  return `<section class="head"><div><h2>Centro de operaciones</h2><p>El pipeline operacional: cada etapa del vuelo se registra como un evento y actualiza tripulación, embarque, equipaje, millas y mantenimiento.</p></div></section>
+  <nav class="tabs" aria-label="Operaciones">${tabs.map(([k,l])=>`<button data-act="sub" data-a="ops" data-v="${k}" aria-current="${s===k}">${l}${k==='casos'&&abiertos?`<span class="badge">${abiertos}</span>`:''}</button>`).join('')}</nav>${body}`;
+}
+function oTablero(){
+  const hoy=dstr(new Date()), hasta=dstr(addDays(new Date(),2));
+  const vs=G.vuelosInfo(`WHERE date(v.SalidaProgramada) BETWEEN ? AND ? ORDER BY v.SalidaProgramada LIMIT 60`,[hoy,hasta]);
+  if(!st.selVuelo || !vs.find(v=>v.IdVuelo===st.selVuelo)){ const conPax=vs.find(v=>v.vendidos>0&&v.Estado==='Programado'); st.selVuelo=(conPax||vs[0])?.IdVuelo; }
+  const cls=e=> e==='Programado'?'st-prog': ['En vuelo'].includes(e)?'st-air': ['Finalizado','Aterrizado','Descargando'].includes(e)?'st-done':'st-act';
+  return `<section class="board" aria-label="Tablero de salidas"><table><thead><tr><th>FECHA</th><th>SALE</th><th>VUELO</th><th>DESTINO</th><th>DESDE</th><th>PUERTA</th><th>PAX</th><th>ESTADO</th></tr></thead><tbody>
+   ${vs.map(v=>`<tr class="click ${v.IdVuelo===st.selVuelo?'sel':''}" data-act="selv" data-v="${v.IdVuelo}" tabindex="0"><td>${fDate(v.SalidaProgramada).toUpperCase()}</td><td>${fTime(v.SalidaProgramada)}</td><td class="fl">${v.NumeroVuelo}</td><td>${h(v.cd.toUpperCase())}</td><td>${v.o}</td><td>${v.Puerta||'—'}</td><td>${v.vendidos}</td><td class="st ${cls(v.Estado)}">${h(v.Estado.toUpperCase())}</td></tr>`).join('')}
+  </tbody></table></section>
+  ${st.selVuelo? oDetalle(st.selVuelo):''}`;
+}
+function oDetalle(id){
+  const v=G.vuelosInfo('WHERE v.IdVuelo = ?',[id])[0];
+  const ev=all(bd,`SELECT e.*, m.Nombres || ' ' || m.Apellidos n FROM EventoVuelo e LEFT JOIN Empleado m ON m.IdEmpleado=e.IdEmpleado WHERE e.IdVuelo = ? ORDER BY e.FechaHora, e.IdEvento`,[id]);
+  const hechas=ev.map(e=>e.TipoEvento), k=ETAPAS.findIndex(e=>!hechas.includes(e));
+  const crew=all(bd,`SELECT a.Rol, e.Nombres || ' ' || e.Apellidos n FROM AsignacionTripulacion a JOIN Empleado e ON e.IdEmpleado=a.IdEmpleado WHERE a.IdVuelo = ?`,[id]);
+  const pax=all(bd,`SELECT c.Nombres || ' ' || c.Apellidos n, t.Clase, t.Asiento, t.Estado, k.IdCheckin, k.FechaEmbarque, (SELECT COUNT(*) FROM Equipaje e WHERE e.IdTiquete=t.IdTiquete) maletas FROM Tiquete t JOIN Reserva r ON r.IdReserva=t.IdReserva JOIN Cliente c ON c.IdCliente=t.IdCliente LEFT JOIN Checkin k ON k.IdTiquete=t.IdTiquete WHERE r.IdVuelo = ? ORDER BY c.Apellidos`,[id]);
+  return `<section class="panel stack"><div class="spread"><div><h3>Vuelo ${v.NumeroVuelo} · ${h(v.co)} (${v.o}) → ${h(v.cd)} (${v.d})</h3><p class="muted">${fDT(v.SalidaProgramada)} · ${h(v.Modelo)} ${v.Matricula} · ${num(v.DistanciaMillas)} millas · ${v.TipoRuta}</p></div>
+    ${k>=0?`<button class="btn" data-act="avanzar" data-v="${id}">Registrar: ${ETAPAS[k]}</button>`:'<span class="pill ok">Ciclo completo</span>'}</div>
+    <ol class="pipe">${ETAPAS.map((e,i)=>`<li class="${i<(k<0?8:k)?'done':i===k?'next':''}"><b>${i+1}.</b> ${e}<br><span class="muted" style="font-size:11px">${ETAPA_EN[i]}</span></li>`).join('')}</ol>
+    <div class="grid2">
+     <div class="stack"><h4>Eventos registrados</h4>${ev.length?`<ol class="timeline">${ev.map(e=>`<li><div><b>${h(e.TipoEvento)}</b> <span class="muted" style="font-size:12.5px">${fTime(e.FechaHora)}</span><div class="muted" style="font-size:13px">${h(e.Descripcion||'')}${e.n?' · '+h(e.n):''}</div></div></li>`).join('')}</ol>`:'<p class="muted">Sin eventos. Empieza asignando recursos.</p>'}
+      <h4>Tripulación</h4>${crew.length?`<ul style="margin:0;padding-left:18px">${crew.map(c=>`<li>${h(c.n)} <span class="muted">· ${h(c.Rol)}</span></li>`).join('')}</ul>`:'<p class="muted">Se asigna en la etapa 1.</p>'}</div>
+     <div class="stack"><h4>Pasajeros (${pax.length})</h4>${pax.length?`<div class="tbl"><table><thead><tr><th>Pasajero</th><th>Silla</th><th>Check-in</th><th>Maletas</th><th>Estado</th></tr></thead><tbody>${pax.map(p=>`<tr><td>${h(p.n)}<div class="muted" style="font-size:12px">${p.Clase}</div></td><td>${p.Asiento||'—'}</td><td>${p.IdCheckin?(p.FechaEmbarque?'Embarcado':'Sí'):'No'}</td><td class="num">${p.maletas}</td><td>${pill(p.Estado)}</td></tr>`).join('')}</tbody></table></div><p class="hint">Solo abordan, y acumulan millas, los pasajeros que hicieron check-in.</p>`:'<p class="muted">Este vuelo aún no tiene pasajeros. Reserva uno desde el portal de pasajeros.</p>'}</div>
+    </div></section>`;
+}
+function oCasos(){
+  const cs=all(bd,`SELECT s.*, c.Nombres || ' ' || c.Apellidos n, e.Nombres || ' ' || e.Apellidos ag FROM CasoServicio s JOIN Cliente c ON c.IdCliente=s.IdCliente LEFT JOIN Empleado e ON e.IdEmpleado=s.IdEmpleado ORDER BY CASE s.Estado WHEN 'Abierto' THEN 0 WHEN 'En atención' THEN 1 ELSE 2 END, s.FechaApertura DESC LIMIT 40`);
+  return `<section class="tbl"><table><thead><tr><th>Caso</th><th>Pasajero</th><th>Tipo</th><th>Canal</th><th>Abierto</th><th>Agente</th><th>Estado</th><th></th></tr></thead><tbody>${cs.map(c=>`<tr><td class="mono">${c.IdCaso}</td><td>${h(c.n)}</td><td>${h(c.Tipo)}<div class="muted" style="font-size:12px">${h(c.Descripcion)}</div></td><td>${c.Canal}</td><td>${fDate(c.FechaApertura)}</td><td>${h(c.ag||'—')}</td><td>${pill(c.Estado)}</td>
+    <td class="r">${c.Estado==='Abierto'?`<button class="btn sm" data-act="caso" data-v="${c.IdCaso}">Atender</button>`:c.Estado==='En atención'?`<button class="btn ghost sm" data-act="cerrarCaso" data-v="${c.IdCaso}">Cerrar</button>`:''}</td></tr>`).join('')}</tbody></table></section>`;
+}
+function oMant(){
+  const fl=all(bd,`SELECT a.*, (SELECT MAX(FechaInicio) FROM Mantenimiento m WHERE m.IdAeronave=a.IdAeronave) ult, (SELECT COUNT(*) FROM Vuelo v WHERE v.IdAeronave=a.IdAeronave AND v.Estado='Finalizado') vuelos FROM Aeronave a ORDER BY a.Matricula`);
+  const mt=all(bd,`SELECT m.*, a.Matricula, e.Nombres || ' ' || e.Apellidos n FROM Mantenimiento m JOIN Aeronave a ON a.IdAeronave=m.IdAeronave JOIN Empleado e ON e.IdEmpleado=m.IdEmpleado ORDER BY m.FechaInicio DESC LIMIT 25`);
+  return `<section class="grid2"><div class="stack"><h3>Flota</h3><div class="tbl"><table><thead><tr><th>Matrícula</th><th>Modelo</th><th class="r">Sillas</th><th class="r">Vuelos</th><th>Último mantenimiento</th></tr></thead><tbody>${fl.map(a=>`<tr><td class="mono">${a.Matricula}</td><td>${h(a.Modelo)}</td><td class="r num">${a.CapacidadPasajeros}</td><td class="r num">${a.vuelos}</td><td>${a.ult?fDateY(a.ult):'—'}</td></tr>`).join('')}</tbody></table></div></div>
+   <div class="stack"><h3>Mantenimientos recientes</h3><div class="tbl"><table><thead><tr><th>Fecha</th><th>Aeronave</th><th>Tipo</th><th>Técnico</th></tr></thead><tbody>${mt.map(m=>`<tr><td>${fDateY(m.FechaInicio)}</td><td class="mono">${m.Matricula}</td><td>${h(m.Tipo)}</td><td>${h(m.n)}</td></tr>`).join('')}</tbody></table></div></div></section>`;
+}
+
+/* ---- analítica ---- */
+function vAna(){
+  const years=all(dw,'SELECT DISTINCT Anio FROM DimTiempo ORDER BY Anio DESC').map(r=>r.Anio);
+  if(!st.anaYear || !years.includes(st.anaYear)) st.anaYear=years[0]||new Date().getFullYear();
+  const s=st.sub.ana;
+  const tabs=[['4a','4a · Ingresos por mes y ciudad'],['4b','4b · Reservas por mes y ciudad'],['4c','4c · Millas nacionales por pasajero']];
+  const cnt=t=>one(dw,`SELECT COUNT(*) n FROM ${t}`).n;
+  return `<section class="head"><div><h2>Analítica del data warehouse</h2><p>Las consultas corren sobre las tablas de hechos y dimensiones (TablesDW.sql). El ETL las llena desde la base de datos operacional.</p></div>
+    <div class="row"><label for="anio" style="margin:0">Año</label><select id="anio" data-change="anio" style="width:auto">${years.map(y=>`<option ${y===st.anaYear?'selected':''}>${y}</option>`).join('')}</select></div></section>
+  <section class="panel spread"><div><b>Última carga ETL:</b> ${st.etl?`${fDT(st.etl.fecha)} · ${num(st.etl.ventas)} ventas, ${num(st.etl.reservas)} reservas y ${num(st.etl.millas)} movimientos de millas en ${st.etl.ms} ms`:'sin ejecutar'}
+    ${st.changes?`<div class="hint" style="color:var(--warn)">Hay ${st.changes} cambio(s) en la BD operacional desde la última carga. Ejecuta el ETL para verlos aquí.</div>`:''}
+    <div class="hint">En el DW: ${num(cnt('FactVentaTiquetes'))} filas en FactVentaTiquetes, ${num(cnt('FactReservas'))} en FactReservas, ${num(cnt('FactMillasPasajero'))} en FactMillasPasajero.</div></div>
+    <button class="btn" data-act="etl">Ejecutar ETL</button></section>
+  <nav class="tabs" aria-label="Requerimientos">${tabs.map(([k,l])=>`<button data-act="sub" data-a="ana" data-v="${k}" aria-current="${s===k}">${l}</button>`).join('')}</nav>
+  ${s==='4c'? a4c() : a4ab(s)}`;
+}
+function barChart(vals, fmt){
+  const W=760,H=210,l=56,b=26,tp=14, max=Math.max(1,...vals), step=niceStep(max), top=Math.ceil(max/step)*step, bw=(W-l-10)/12;
+  const y=v=>tp+(H-tp-b)*(1-v/top);
+  let g=''; for(let v=0; v<=top; v+=step) g+=`<line class="axis" x1="${l}" x2="${W-6}" y1="${y(v)}" y2="${y(v)}" stroke-dasharray="${v?'2 4':''}"/><text x="${l-6}" y="${y(v)+4}" text-anchor="end">${fmt(v,true)}</text>`;
+  vals.forEach((v,i)=>{ const x=l+i*bw+bw*0.18, w=bw*0.64; g+=`<rect class="bar" x="${x}" y="${y(v)}" width="${w}" height="${Math.max(0,y(0)-y(v))}" rx="3"/><text x="${x+w/2}" y="${H-8}" text-anchor="middle">${MES3[i]}</text>`; if(v) g+=`<text class="val" x="${x+w/2}" y="${y(v)-4}" text-anchor="middle">${fmt(v)}</text>`; });
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg></div>`;
+}
+function niceStep(max){ const raw=max/4, p=Math.pow(10,Math.floor(Math.log10(raw))), n=raw/p; return (n<=1?1:n<=2?2:n<=5?5:10)*p; }
+const short = v => v>=1e6? (v/1e6).toFixed(1)+'M' : v>=1e3? Math.round(v/1e3)+'k' : String(Math.round(v));
+function a4ab(s){
+  const isA=s==='4a', sql=(isA?Q.a:Q.b)(st.anaCiudad), rows=all(dw,sql,[st.anaYear]);
+  const key=isA?'Ingresos':'Reservas', fmt=isA? (v,ax)=> ax? '$'+short(v) : '$'+short(v) : (v)=>num(v);
+  const meses=[...new Set(rows.map(r=>r.Mes))].sort((a,b)=>a-b), tot={}; rows.forEach(r=>tot[r.Ciudad]=(tot[r.Ciudad]||0)+r[key]);
+  const ciudades=Object.keys(tot).sort((a,b)=>tot[b]-tot[a]); const max=Math.max(1,...rows.map(r=>r[key]));
+  const cell=(m,c)=> rows.find(r=>r.Mes===m&&r.Ciudad===c)?.[key]||0;
+  const porMes=Array.from({length:12},(_,i)=>rows.filter(r=>r.Mes===i+1).reduce((a,r)=>a+r[key],0));
+  const totAll=porMes.reduce((a,b)=>a+b,0);
+  return `<section class="panel stack"><div class="spread"><div><h3>${isA?'Ingresos por venta de tiquetes':'Número de reservas hechas por los clientes'}, ${st.anaYear}</h3><p class="muted">${isA?`Total del año: <b class="num">${money(totAll)}</b>`:`Total del año: <b class="num">${num(totAll)}</b> reservas`}</p></div>
+     <div class="row"><label for="ciu" style="margin:0">Ciudad del vuelo</label><select id="ciu" data-change="ciudad" style="width:auto"><option value="origen" ${st.anaCiudad==='origen'?'selected':''}>Origen</option><option value="destino" ${st.anaCiudad==='destino'?'selected':''}>Destino</option></select></div></div>
+    <h4>${isA?'Ingresos':'Reservas'} por mes</h4>${barChart(porMes, isA?(v)=>'$'+short(v):(v)=>short(v))}
+    <h4>Por mes y ciudad de ${st.anaCiudad}</h4>
+    <div class="tbl"><table><thead><tr><th>Mes</th>${ciudades.map(c=>`<th class="r">${h(c)}</th>`).join('')}<th class="r">Total</th></tr></thead><tbody>
+     ${meses.map(m=>`<tr><td>${MESES[m-1]}</td>${ciudades.map(c=>{ const v=cell(m,c); return `<td class="r num" style="background:color-mix(in srgb, var(--brand) ${Math.round(v/max*38)}%, transparent)">${v?(isA?money(v):num(v)):'—'}</td>`; }).join('')}<td class="r num"><b>${isA?money(porMes[m-1]):num(porMes[m-1])}</b></td></tr>`).join('')}
+    </tbody></table></div>
+    <details><summary>Ver la consulta SQL sobre el data warehouse</summary><pre class="sqlbox">${h(sql.replace('?',st.anaYear))}</pre></details></section>`;
+}
+function a4c(){
+  const rows=all(dw,Q.c(),[st.anaYear]); const per={};
+  rows.forEach(r=>{ const p=(per[r.NombreCompleto] ||= {n:r.NombreCompleto,nivel:r.NivelSocio,m:Array(12).fill(0),tot:0,vuelos:0}); p.m[r.Mes-1]+=r.Millas; p.tot+=r.Millas; p.vuelos+=r.Vuelos; });
+  const list=Object.values(per).sort((a,b)=>b.tot-a.tot); const meses=[...new Set(rows.map(r=>r.Mes))].sort((a,b)=>a-b);
+  const q=(st.filtro4c||'').toLowerCase(); const shown=list.filter(p=>!q||p.n.toLowerCase().includes(q)).slice(0,25);
+  const porMes=Array.from({length:12},(_,i)=>rows.filter(r=>r.Mes===i+1).reduce((a,r)=>a+r.Millas,0));
+  return `<section class="panel stack"><div class="spread"><div><h3>Millas acumuladas por pasajero en vuelos nacionales, ${st.anaYear}</h3><p class="muted">${list.length} pasajeros con millas nacionales · ${num(porMes.reduce((a,b)=>a+b,0))} millas en total</p></div>
+    <div><label for="f4c">Buscar pasajero</label><input id="f4c" data-input="f4c" value="${h(st.filtro4c||'')}" placeholder="Nombre"></div></div>
+    <h4>Millas nacionales por mes</h4>${barChart(porMes,(v)=>short(v))}
+    <div class="tbl"><table><thead><tr><th>Pasajero</th><th>Nivel</th>${meses.map(m=>`<th class="r">${MES3[m-1]}</th>`).join('')}<th class="r">Total</th><th class="r">Vuelos</th></tr></thead><tbody>
+     ${shown.map(p=>`<tr><td>${h(p.n)}</td><td>${h(p.nivel)}</td>${meses.map(m=>`<td class="r num">${p.m[m-1]?num(p.m[m-1]):'—'}</td>`).join('')}<td class="r num"><b>${num(p.tot)}</b></td><td class="r num">${p.vuelos}</td></tr>`).join('')||`<tr><td colspan="${meses.length+4}" class="muted">Ningún pasajero coincide.</td></tr>`}
+    </tbody></table></div><p class="hint">Se muestran los 25 pasajeros con más millas. Un vuelo es nacional cuando su ruta une dos ciudades del mismo país (DimRuta.TipoRuta).</p>
+    <details><summary>Ver la consulta SQL sobre el data warehouse</summary><pre class="sqlbox">${h(Q.c().replace('?',st.anaYear))}</pre></details></section>`;
+}
+
+/* ---- base de datos ---- */
+function vDB(){
+  const k=st.sub.db, db=k==='dw'?dw:bd, sch=SCHEMA[k], names=Object.keys(sch);
+  let t=st.dbTable[k]; if(!sch[t]) t=st.dbTable[k]=names[0];
+  const rows=all(db,`SELECT * FROM ${t} LIMIT 100`), total=one(db,`SELECT COUNT(*) n FROM ${t}`).n, cols=sch[t].cols;
+  const cr=st.consolaRes && st.consolaRes.k===k ? st.consolaRes : null;
+  return `<section class="head"><div><h2>Base de datos</h2><p>Las tablas se crearon con los scripts generados por Enterprise Architect (${k==='dw'?'TablesDW.sql':'TablesBD.sql'}). Las llaves foráneas están activas: el motor rechaza datos que no cumplan el modelo.</p></div></section>
+  <nav class="tabs"><button data-act="sub" data-a="db" data-v="bd" aria-current="${k==='bd'}">BD operacional · ${names.length&&k==='bd'?names.length:Object.keys(SCHEMA.bd).length} tablas</button><button data-act="sub" data-a="db" data-v="dw" aria-current="${k==='dw'}">Data warehouse · ${Object.keys(SCHEMA.dw).length} tablas</button></nav>
+  <section class="row" style="gap:6px">${names.map(n=>`<button class="btn ${n===t?'':'quiet'} sm" data-act="tabla" data-v="${n}">${n} <span class="num" style="opacity:.75">${num(one(db,`SELECT COUNT(*) n FROM ${n}`).n)}</span></button>`).join('')}</section>
+  <section class="stack"><div class="spread"><h3>${t}</h3><span class="muted">${num(total)} filas${total>100?' · se muestran las primeras 100':''}</span></div>
+   <div class="tbl"><table><thead><tr>${cols.map(c=>`<th>${c.name}<small>${c.name===sch[t].pk?'PK ':''}${sch[t].fks[c.name]?'FK → '+sch[t].fks[c.name]:''}</small><span style="font-weight:500;font-family:var(--mono);font-size:10.5px">${c.type}${c.nn?'':' · null'}</span></th>`).join('')}</tr></thead>
+   <tbody>${rows.map(r=>`<tr>${cols.map(c=>r[c.name]===null?'<td class="null">NULL</td>':`<td class="${typeof r[c.name]==='number'?'r num':''}">${h(r[c.name])}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}" class="null">Sin filas</td></tr>`}</tbody></table></div></section>
+  <section class="panel stack"><h3>Consola SQL</h3><p class="muted">Escribe una consulta de lectura (SELECT) sobre ${k==='dw'?'el data warehouse':'la BD operacional'}.</p>
+   <form class="stack" data-form="consola"><textarea id="sqlc" name="sql" class="mono" spellcheck="false">${h(st.consola[k]|| (k==='dw'? "SELECT c.Ciudad, SUM(f.ValorVenta) AS Ingresos\nFROM FactVentaTiquetes f JOIN DimCiudad c ON c.IdCiudadDW = f.IdCiudadOrigen\nGROUP BY c.Ciudad ORDER BY Ingresos DESC;" : "SELECT v.NumeroVuelo, v.Estado, COUNT(t.IdTiquete) AS Pasajeros\nFROM Vuelo v JOIN Reserva r ON r.IdVuelo = v.IdVuelo JOIN Tiquete t ON t.IdReserva = r.IdReserva\nWHERE date(v.SalidaProgramada) >= date('now')\nGROUP BY v.IdVuelo ORDER BY v.SalidaProgramada LIMIT 10;"))}</textarea><div><button class="btn" type="submit">Ejecutar consulta</button></div></form>
+   ${cr? (cr.err?`<div class="alert bad">${h(cr.err)}</div>` : `<div class="tbl"><table><thead><tr>${cr.cols.map(c=>`<th>${h(c)}</th>`).join('')}</tr></thead><tbody>${cr.rows.slice(0,200).map(r=>`<tr>${r.map(v=>v===null?'<td class="null">NULL</td>':`<td>${h(v)}</td>`).join('')}</tr>`).join('')||`<tr><td class="null" colspan="${cr.cols.length||1}">Sin resultados</td></tr>`}</tbody></table></div><p class="hint">${cr.rows.length} fila(s)</p>`):''}
+   <details><summary>Ver el DDL adaptado que se ejecutó para crear ${k==='dw'?'el DW':'la BD'}</summary><pre class="sqlbox">${h(adaptDDL(document.getElementById(k==='dw'?'ddl-dw':'ddl-bd').textContent,'_tmp').join(';\n\n')+';')}</pre></details></section>`;
+}
+
+/* ---------------- interacción ---------------- */
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,2600); }
+function modal(html){ const m=document.getElementById('modal'); m.innerHTML=`<div class="backdrop" data-act="close"></div><div class="dialog" role="dialog" aria-modal="true">${html}</div>`; m.hidden=false; m.querySelector('input,select,button')?.focus(); }
+function closeModal(){ const m=document.getElementById('modal'); m.hidden=true; m.innerHTML=''; }
+const ACT={
+  area:d=>{ st.area=d.v; render(); scrollTo(0,0); },
+  sub:d=>{ st.sub[d.a]=d.v; if(d.v!=='pago'){ st.pay=null; } render(); },
+  log:()=>{ st.logOpen=!st.logOpen; if(st.logOpen) st.unseen=0; render(); },
+  logclear:()=>{ st.log=[]; st.unseen=0; renderLog(); },
+  close:closeModal,
+  fecha:d=>{ st.search.f=d.v; ACT.buscarRun(); },
+  buscarRun:()=>{ const s=st.search; log('Interfaz','El pasajero busca vuelos','ui'); s.res=G.buscar(s.o,s.d,s.f); render(); },
+  elegir:d=>{
+    const s=st.search, v=G.vuelosInfo('WHERE v.IdVuelo = ?',[d.v])[0];
+    const extra=Array.from({length:s.pax-1},(_,i)=>`<fieldset style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><legend style="font-weight:700;padding:0 6px">Pasajero ${i+2}</legend><div class="fields"><div><label for="n${i}">Nombres</label><input id="n${i}" name="n${i}" required maxlength="40"></div><div><label for="a${i}">Apellidos</label><input id="a${i}" name="a${i}" required maxlength="40"></div><div><label for="doc${i}">Documento</label><input id="doc${i}" name="doc${i}" required maxlength="15" inputmode="numeric"></div></div></fieldset>`).join('');
+    modal(`<h3>Reservar ${v.NumeroVuelo}</h3><p class="muted">${h(v.co)} → ${h(v.cd)} · ${fDT(v.SalidaProgramada)} · ${s.pax} pasajero(s), ${s.clase.toLowerCase()}</p>
+      <form class="stack" data-form="reservar" data-v="${d.v}"><p>Pasajero 1: <b>${h(one(bd,"SELECT Nombres || ' ' || Apellidos n FROM Cliente WHERE IdCliente=?",[st.user]).n)}</b> (titular)</p>${extra}
+      <div class="row"><button class="btn" type="submit">Confirmar reserva e ir al pago</button><button class="btn quiet" type="button" data-act="close">Cancelar</button></div></form>`);
+  },
+  retomarPago:d=>{ const r=one(bd,'SELECT * FROM Reserva WHERE IdReserva=?',[d.v]); const pe=st.pend[r.IdReserva]||{ids:Array(r.NumeroPasajeros).fill(r.IdCliente),clase:'Económica'};
+    st.pendingRes={rid:r.IdReserva,cod:r.CodigoReserva,vuelo:r.IdVuelo,clase:pe.clase,ids:pe.ids}; st.pay=null; st.sub.pas='pago'; render(); },
+  checkin:d=>{
+    const t=one(bd,`SELECT t.*, v.NumeroVuelo, a.CapacidadPasajeros cap FROM Tiquete t JOIN Reserva r ON r.IdReserva=t.IdReserva JOIN Vuelo v ON v.IdVuelo=r.IdVuelo JOIN Aeronave a ON a.IdAeronave=v.IdAeronave WHERE t.IdTiquete=?`,[d.v]);
+    const sug=(t.Clase==='Ejecutiva'?ri(1,3):t.Clase==='Premium'?ri(4,8):ri(10,Math.max(11,Math.floor(t.cap/6))))+SEATS[ri(0,5)];
+    modal(`<h3>Check-in · vuelo ${t.NumeroVuelo}</h3><form class="stack" data-form="checkin" data-v="${d.v}"><div class="fields"><div><label for="asiento">Silla</label><input id="asiento" name="asiento" value="${sug}" maxlength="4" required></div>
+      <div><label for="nmal">Maletas para documentar</label><select id="nmal" name="nmal"><option value="0">Ninguna</option><option value="1">1 maleta</option><option value="2">2 maletas</option></select></div>
+      <div><label for="peso">Peso por maleta (kg)</label><input id="peso" name="peso" type="number" min="1" max="32" step="0.1" value="20"></div></div>
+      <p class="hint">Se registra en las tablas Checkin, Equipaje y RastreoEquipaje.</p><div class="row"><button class="btn" type="submit">Hacer check-in</button><button class="btn quiet" type="button" data-act="close">Cancelar</button></div></form>`);
+  },
+  pase:d=>{
+    const p=one(bd,`SELECT t.*, c.Nombres || ' ' || c.Apellidos n, v.NumeroVuelo, v.SalidaProgramada, v.Puerta, ao.CodigoIATA o, ad.CodigoIATA d, co.Nombre co, cd.Nombre cd, r.CodigoReserva, k.FechaEmbarque FROM Tiquete t JOIN Cliente c ON c.IdCliente=t.IdCliente JOIN Reserva r ON r.IdReserva=t.IdReserva JOIN Vuelo v ON v.IdVuelo=r.IdVuelo JOIN Ruta ru ON ru.IdRuta=v.IdRuta JOIN Aeropuerto ao ON ao.IdAeropuerto=ru.IdAeropuertoOrigen JOIN Aeropuerto ad ON ad.IdAeropuerto=ru.IdAeropuertoDestino JOIN Ciudad co ON co.IdCiudad=ao.IdCiudad JOIN Ciudad cd ON cd.IdCiudad=ad.IdCiudad JOIN Checkin k ON k.IdTiquete=t.IdTiquete WHERE t.IdTiquete=?`,[d.v]);
+    const tags=all(bd,'SELECT CodigoEtiqueta FROM Equipaje WHERE IdTiquete=?',[d.v]).map(x=>x.CodigoEtiqueta);
+    const embarque=addMin(parse(p.SalidaProgramada),-40);
+    modal(`<div class="pass"><div class="a"><p class="muted" style="font-size:12px">BETA AIRLINES · PASE DE ABORDAR</p><div class="row" style="gap:16px;margin-top:6px"><div class="big">${p.o}</div><div class="muted">→</div><div class="big">${p.d}</div></div><p class="muted">${h(p.co)} → ${h(p.cd)}</p>
+      <dl><dt>Pasajero</dt><dt>Vuelo</dt><dt>Fecha</dt><dd>${h(p.n)}</dd><dd>${p.NumeroVuelo}</dd><dd>${fDate(p.SalidaProgramada)}</dd><dt>Embarque</dt><dt>Clase</dt><dt>Reserva</dt><dd>${fTime(dtstr(embarque))}</dd><dd>${p.Clase}</dd><dd class="mono">${p.CodigoReserva}</dd></dl></div>
+      <div class="b"><dl style="grid-template-columns:1fr;margin:0"><dt>Puerta</dt><dd style="font-size:${p.Puerta?26:16}px">${p.Puerta||'Por asignar'}</dd><dt>Silla</dt><dd style="font-size:26px">${p.Asiento}</dd><dt>Maletas</dt><dd class="mono" style="font-size:12px">${tags.join('<br>')||'Ninguna'}</dd></dl></div></div>
+      ${p.FechaEmbarque?'<div class="alert ok">Ya abordaste este vuelo.</div>':''}<div class="row"><button class="btn" data-act="close">Listo</button></div>`);
+  },
+  rastrear:d=>{ log('Interfaz','El pasajero rastrea la maleta '+d.v,'ui'); const el=document.getElementById('rastreo'); if(el){ el.innerHTML=rastreoHTML(d.v); document.getElementById('tag').value=d.v; } renderLog(); },
+  afiliar:()=>{ log('Interfaz','El pasajero se afilia a Skymiles','ui'); G.afiliar(); toast('Cuenta Skymiles creada'); render(); },
+  selv:d=>{ st.selVuelo=d.v; render(); },
+  avanzar:d=>{ try{ const r=G.avanzar(d.v); toast(r); }catch(e){ toast('No se pudo registrar: '+e.message); } render(); },
+  caso:d=>{ log('Interfaz','Un agente toma el caso '+d.v,'ui'); G.atenderCaso(d.v,false); render(); },
+  cerrarCaso:d=>{ log('Interfaz','El agente cierra el caso '+d.v,'ui'); G.atenderCaso(d.v,true); toast('Caso cerrado'); render(); },
+  etl:()=>{ ejecutarETL(); toast('Data warehouse actualizado'); render(); },
+  tabla:d=>{ st.dbTable[st.sub.db]=d.v; render(); },
+  reset:()=>modal(`<h3>Reiniciar datos</h3><p>Se borran las reservas, check-ins y cambios que hiciste, y se vuelven a generar los datos de ejemplo.</p><div class="row"><button class="btn danger" data-act="resetOk">Reiniciar</button><button class="btn quiet" data-act="close">Cancelar</button></div>`),
+  resetOk:()=>{ try{localStorage.removeItem(STORE);}catch(e){} closeModal(); createDBs(); for(const k in seq) delete seq[k]; seed(); ejecutarETL(); st.user=null; st.log=[]; st.unseen=0; st.search=null; st.area='inicio'; render(); toast('Datos reiniciados'); }
+};
+const FORM={
+  buscar:(f)=>{ Object.assign(st.search,{o:f.o,d:f.d,f:f.f,pax:+f.pax,clase:f.clase}); if(f.o===f.d){ toast('Elige un destino distinto al origen'); return; } ACT.buscarRun(); },
+  reservar:(f,el)=>{ const s=st.search; const pas=[{}]; for(let i=0;i<s.pax-1;i++) pas.push({n:f['n'+i].trim(),a:f['a'+i].trim(),doc:f['doc'+i].trim()});
+    try{ const r=G.crearReserva(el.dataset.v,s.clase,pas); closeModal(); st.pendingRes={...r,vuelo:el.dataset.v}; st.pay=null; st.sub.pas='pago'; render(); }catch(e){ toast('No se pudo reservar: '+e.message); } },
+  pagar:(f)=>{ const n=f.tarjeta.replace(/\s/g,''); const p=st.pendingRes;
+    log('Interfaz','El pasajero confirma el pago','ui'); log('GestorPagos','Solicitud enviada a la pasarela de pagos');
+    if(!/^\d{13,19}$/.test(n)){ st.pay={err:'El número de tarjeta debe tener entre 13 y 19 dígitos.'}; render(); return; }
+    log('Pasarela de pagos (simulada)',`Autorizando tarjeta terminada en ${n.slice(-4)}`,'ext');
+    if(n.endsWith('0000')){ log('Pasarela de pagos (simulada)','El banco rechazó la transacción','err'); st.pay={err:'El banco rechazó el pago. No se hizo ningún cobro; prueba con otra tarjeta.'}; render(); return; }
+    try{ const r=G.pagar({...p, medio:f.medio}); delete st.pend[p.rid]; st.pay={done:true,...r}; render(); toast('Pago aprobado'); }catch(e){ st.pay={err:e.message}; render(); } },
+  checkin:(f,el)=>{ const n=+f.nmal, kg=Math.max(1,Math.min(32,+f.peso||20)); try{ const tags=G.checkin(el.dataset.v, f.asiento.trim().toUpperCase(), Array(n).fill(kg)); closeModal(); toast(tags.length?`Check-in listo. Etiquetas: ${tags.join(', ')}`:'Check-in listo'); render(); ACT.pase({v:el.dataset.v}); }catch(e){ toast('No se pudo hacer el check-in: '+e.message); } },
+  rastrear:(f)=>ACT.rastrear({v:f.tag.trim().toUpperCase()}),
+  caso:(f)=>{ log('Interfaz','El pasajero abre una solicitud','ui'); G.caso(f.tipo, f.desc.trim().slice(0,200)); toast('Solicitud enviada'); render(); },
+  consola:(f)=>{ const k=st.sub.db, sql=f.sql.trim(); st.consola[k]=sql;
+    if(!/^(SELECT|WITH|PRAGMA)\b/i.test(sql)){ st.consolaRes={k,err:'La consola solo acepta consultas de lectura (SELECT). Los cambios se hacen desde la aplicación.'}; render(); return; }
+    try{ const r=(k==='dw'?dw:bd).exec(sql)[0]; log('Consola SQL → '+(k==='dw'?'DW':'BD'),sql,'bd'); st.consolaRes={k,cols:r?r.columns:[],rows:r?r.values:[]}; }catch(e){ st.consolaRes={k,err:e.message}; } render(); }
+};
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-act]'); if(!b) return; const f=ACT[b.dataset.act]; if(f){ e.preventDefault(); f({...b.dataset}); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Enter' && e.target.matches('tr[data-act]')) ACT[e.target.dataset.act]({...e.target.dataset}); if(e.key==='Escape'){ if(!document.getElementById('modal').hidden) closeModal(); else if(st.logOpen) ACT.log(); } });
+document.addEventListener('submit',e=>{ const f=e.target.closest('form[data-form]'); if(!f) return; e.preventDefault(); FORM[f.dataset.form]?.(Object.fromEntries(new FormData(f)), f); });
+document.addEventListener('change',e=>{ const c=e.target.dataset.change; if(!c) return;
+  if(c==='user'){ st.user=e.target.value; log('Interfaz','Sesión iniciada como '+e.target.value+' (simulado)','ui'); render(); }
+  if(c==='anio'){ st.anaYear=+e.target.value; render(); }
+  if(c==='ciudad'){ st.anaCiudad=e.target.value; render(); } });
+document.addEventListener('input',e=>{ if(e.target.dataset.input==='f4c'){ st.filtro4c=e.target.value; const pos=e.target.selectionStart; render(); const i=document.getElementById('f4c'); i.focus(); i.setSelectionRange(pos,pos); } });
+
+(async function boot(){
+  try{
+    const bytes=Uint8Array.from(atob(WASM_B64),c=>c.charCodeAt(0));
+    SQLlib = await initSqlJs({ wasmBinary: bytes });
+    adaptDDL(document.getElementById('ddl-bd').textContent,'bd'); adaptDDL(document.getElementById('ddl-dw').textContent,'dw');
+    if(!loadSaved()){ createDBs(); seed(); ejecutarETL(); log('Sistema','Bases de datos creadas con TablesBD.sql y TablesDW.sql y cargadas con datos de ejemplo','ui'); }
+    st.unseen=0; render();
+  }catch(err){ document.getElementById('app').innerHTML=`<div class="loading wrapx"><div><h3>No se pudo iniciar el motor de base de datos</h3><p>${h(err.message)}</p></div></div>`; console.error(err); }
+})();
+</script>

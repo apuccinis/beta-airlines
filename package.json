@@ -1,0 +1,24 @@
+{
+  "name": "beta-airlines",
+  "private": true,
+  "type": "module",
+  "workspaces": ["core", "server", "web"],
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm run dev -w server\" \"npm run dev -w web\"",
+    "seed": "npm run seed -w server",
+    "start": "npm run start -w server",
+    "test": "npm run test -w core",
+    "typecheck": "npm run typecheck -w core && npm run typecheck -w server && npm run typecheck -w web",
+    "build:pages": "npm run build:pages -w web",
+    "preview:pages": "npm run preview:pages -w web",
+    "capturas": "tsx scripts/capturas.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^10.0.6",
+    "playwright": "^1.64.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.0"
+  }
+}

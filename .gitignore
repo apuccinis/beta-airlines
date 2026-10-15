@@ -1,0 +1,12 @@
+node_modules/
+data/*.db
+data/*.db-*
+data/*.json
+capturas/
+dist/
+web/dist/
+*.log
+.DS_Store
+test-results/
+web/dist-pages/
+data/capturas/
